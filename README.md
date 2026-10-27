@@ -39,6 +39,9 @@ If the packaged `dwm` is installed it can shadow the build: `sudo pacman -R dwm`
 
 Edit `~/dwm/config.h`, then `cd ~/dwm && sudo make clean install` and restart dwm.
 Copy the file back here to keep the repo current.
+Just have fun with it and fork to make it better
+Made possible by Claude and Me
+tt:@d4m14n.7
 
 ## Notes
 
