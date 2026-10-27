@@ -1,0 +1,17 @@
+# Tokyo Night palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Tokyo Night"
+DARK=1
+BG="#1a1b26"          # main background (bars, windows)
+BG_ALT="#24283b"      # raised surfaces
+BG_HI="#414868"       # borders / highlights
+FG="#c0caf5"          # main text
+FG_DIM="#6a729f"      # muted text
+ACCENT="#7aa2f7"      # selected tag, active border, focus
+ACCENT_FG="#1a1b26"   # text drawn on top of ACCENT
+RED="#f7768e"
+GREEN="#9ece6a"
+YELLOW="#e0af68"
+BLUE="#7aa2f7"
+MAGENTA="#bb9af7"
+CYAN="#7dcfff"
+ICONS="Papirus-Dark"

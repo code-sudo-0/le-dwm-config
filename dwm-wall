@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# dwm-wall - wallpaper manager
+#
+# Usage:
+#   dwm-wall pick        thumbnail grid (nsxiv): press m on a picture, then q
+#                        (falls back to a dmenu list if nsxiv is not installed)
+#   dwm-wall random      switch to a random wallpaper
+#   dwm-wall set <file>  use a specific image
+#   dwm-wall restore     re-apply the last wallpaper (run at login)
+#
+# Wallpapers live in ~/Pictures/wallpapers (override with DWM_WALL_DIR).
+set -o pipefail
+
+WALL_DIR="${DWM_WALL_DIR:-$HOME/Pictures/wallpapers}"
+CONF="$HOME/.config/dwm-theme"
+STATE="$CONF/wallpaper"
+mkdir -p "$CONF" "$WALL_DIR"
+
+msg() { echo "dwm-wall: $*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a dwm-wall "$*" 2>/dev/null; return 0; }
+
+list_walls() {
+	find -L "$WALL_DIR" -maxdepth 2 -type f \
+		\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' \) \
+		2>/dev/null | sort
+}
+
+set_wall() {
+	local f=$1
+	[[ -f $f ]] || { msg "not a file: $f"; return 1; }
+	feh --no-fehbg --bg-fill "$f" || { msg "feh failed (is it installed?)"; return 1; }
+	printf '%s\n' "$f" > "$STATE"
+}
+
+random_wall() {
+	local cur pick
+	cur=$(cat "$STATE" 2>/dev/null)
+	pick=$(list_walls | grep -vxF "$cur" | shuf -n1)
+	[[ -n $pick ]] || pick=$(list_walls | shuf -n1)
+	[[ -n $pick ]] || { msg "no images in $WALL_DIR"; return 1; }
+	set_wall "$pick"
+}
+
+restore() {
+	local f
+	f=$(cat "$STATE" 2>/dev/null)
+	if [[ -n $f && -f $f ]]; then
+		set_wall "$f"
+	elif [[ -n $(list_walls | head -n1) ]]; then
+		random_wall
+	else
+		# nothing to show: fall back to the theme background color
+		local BG="#2e3440"
+		# shellcheck source=/dev/null
+		[[ -r $CONF/current.sh ]] && . "$CONF/current.sh"
+		xsetroot -solid "$BG" 2>/dev/null
+	fi
+}
+
+pick() {
+	local choice
+	if [[ -z $(list_walls | head -n1) ]]; then
+		msg "no images in $WALL_DIR - drop some pictures there"
+		return 1
+	fi
+	if command -v nsxiv >/dev/null 2>&1; then
+		choice=$(list_walls | nsxiv -t -i -o 2>/dev/null | head -n1)
+	else
+		local BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+		# shellcheck source=/dev/null
+		[[ -r $CONF/current.sh ]] && . "$CONF/current.sh"
+		choice=$(list_walls | sed "s|^$WALL_DIR/||" | dmenu -i -l 15 -p "wallpaper" \
+			-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" -fn "JetBrainsMono Nerd Font:size=11")
+		[[ -n $choice ]] && choice="$WALL_DIR/$choice"
+	fi
+	[[ -n $choice ]] && set_wall "$choice"
+}
+
+case ${1:-pick} in
+	pick) pick ;;
+	random) random_wall ;;
+	restore) restore ;;
+	set)
+		[[ -n ${2:-} ]] || { echo "usage: dwm-wall set <file>" >&2; exit 1; }
+		set_wall "$2"
+		;;
+	*)
+		sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+		exit 1
+		;;
+esac

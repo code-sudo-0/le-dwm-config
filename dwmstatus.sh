@@ -1,18 +1,30 @@
 #!/usr/bin/env bash
-# dwmstatus.sh - status bar for dwm with a running cat
-# The cat runs faster the harder your CPU is working.
+# dwmstatus - status text for dwm's top bar:
+#   running cat | connectivity | volume | brightness | battery | clock
+# The cat runs faster the harder your CPU works.
 # Deps: xorg-xsetroot, brightnessctl, wireplumber (wpctl), networkmanager (nmcli)
+# Icons come from a Nerd Font (JetBrainsMono Nerd Font, set in dwm's config.h).
 
 TRACK=10          # how far the cat runs before looping
+SEP="   "
 pos=0
 frame=0
 cpu=0
 prev_total=0
 prev_idle=0
 
-bat="" ram="" vol="" bri="" ssid="offline"
+bat="" vol="" bri="" net=""
 last_slow=0
-last_wifi=0
+last_net=0
+
+# icons:  wifi   volume   mute   brightness   charging   clock
+ICON_WIFI=""
+ICON_VOL=""
+ICON_MUTE=""
+ICON_BRI=""
+ICON_BOLT=""
+ICON_CLOCK=""
+BAT_ICONS=("" "" "" "" "")
 
 read_cpu() {
 	local _ user nice system idle iowait irq softirq steal
@@ -28,22 +40,17 @@ read_cpu() {
 read_slow() {
 	# battery (omitted on machines without one)
 	bat=""
-	local b cap st icon
+	local b cap st icon idx
 	for b in /sys/class/power_supply/BAT*; do
 		[[ -r $b/capacity ]] || continue
 		read -r cap < "$b/capacity"
 		read -r st < "$b/status"
-		case $st in
-			Charging) icon="+" ;;
-			Full)     icon="=" ;;
-			*)        icon="-" ;;
-		esac
-		bat="BAT ${cap}%${icon}"
+		idx=$((cap / 21)); ((idx > 4)) && idx=4
+		icon=${BAT_ICONS[$idx]}
+		[[ $st == Charging ]] && icon=$ICON_BOLT
+		bat="${icon} ${cap}%"
 		break
 	done
-
-	# memory
-	ram=$(free -m | awk '/^Mem:/ {printf "%.1fG", $3/1024}')
 
 	# volume (PipeWire)
 	local v
@@ -51,20 +58,36 @@ read_slow() {
 	if [[ -z $v ]]; then
 		vol=""
 	elif [[ $v == *MUTED* ]]; then
-		vol="VOL mute"
+		vol="${ICON_MUTE} muted"
 	else
-		vol="VOL $(awk '{printf "%d%%", $2*100}' <<< "$v")"
+		vol="${ICON_VOL} $(awk '{printf "%d%%", $2*100}' <<< "$v")"
 	fi
 
 	# brightness
 	local br
 	br=$(brightnessctl -m 2>/dev/null | cut -d, -f4)
-	if [[ -n $br ]]; then bri="BRI $br"; else bri=""; fi
+	if [[ -n $br ]]; then bri="${ICON_BRI} $br"; else bri=""; fi
 }
 
-read_wifi() {
-	ssid=$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')
-	[[ -z $ssid ]] && ssid="offline"
+# online = NetworkManager reports full connectivity
+read_net() {
+	local state=""
+	if command -v nmcli >/dev/null 2>&1; then
+		state=$(nmcli -t -g STATE general 2>/dev/null)
+	fi
+	if [[ -z $state ]]; then
+		# no NetworkManager: any non-loopback interface that is up counts
+		local i
+		for i in /sys/class/net/*/operstate; do
+			[[ $i == */lo/operstate ]] && continue
+			if [[ -r $i && $(<"$i") == up ]]; then state=connected; break; fi
+		done
+	fi
+	if [[ $state == connected ]]; then
+		net="${ICON_WIFI} online ✓"
+	else
+		net="${ICON_WIFI} offline ✗"
+	fi
 }
 
 draw_cat() {
@@ -79,18 +102,19 @@ while true; do
 	printf -v now '%(%s)T' -1
 
 	if ((now - last_slow >= 2)); then read_slow; last_slow=$now; fi
-	if ((now - last_wifi >= 10)); then read_wifi; last_wifi=$now; fi
+	if ((now - last_net >= 5)); then read_net; last_net=$now; fi
 
 	read_cpu
 	draw_cat
 	printf -v clock '%(%a %b %d  %I:%M %p)T' -1
 
-	out=" ${CAT} | CPU ${cpu}% | RAM ${ram} | WIFI ${ssid}"
-	[[ -n $bri ]] && out+=" | ${bri}"
-	[[ -n $vol ]] && out+=" | ${vol}"
-	[[ -n $bat ]] && out+=" | ${bat}"
-	out+=" | ${clock} "
-	xsetroot -name "$out"
+	out=" ${CAT}${SEP}${net}"
+	[[ -n $vol ]] && out+="${SEP}${vol}"
+	[[ -n $bri ]] && out+="${SEP}${bri}"
+	[[ -n $bat ]] && out+="${SEP}${bat}"
+	out+="${SEP}${ICON_CLOCK} ${clock} "
+	# if X is gone (session ended) stop instead of looping forever
+	xsetroot -name "$out" || exit 0
 
 	# advance the cat
 	frame=$((frame + 1))

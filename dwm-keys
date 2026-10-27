@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # dwm-keys - keybind cheat sheet shown in dmenu (Super+Shift+/)
-# Pick nothing / press Escape to close.
+# Pick nothing / press Escape to close. Colors follow the active theme.
 
-cat <<'EOF' | dmenu -l 40 -i -p "dwm keys" -fn "monospace:size=11" \
-	-nb "#2e3440" -nf "#d8dee9" -sb "#5e81ac" -sf "#eceff4" >/dev/null
+BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+# shellcheck source=/dev/null
+[[ -r $HOME/.config/dwm-theme/current.sh ]] && . "$HOME/.config/dwm-theme/current.sh"
+
+cat <<'EOF' | dmenu -l 45 -i -p "dwm keys" -fn "JetBrainsMono Nerd Font:size=11" \
+	-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" >/dev/null
 LAUNCH
   Super+Enter            terminal
   Super+P                app launcher (dmenu)
   Super+W                Firefox
   Super+E                Thunar file manager
   Super+Shift+/          this cheat sheet
+LOOK
+  Super+Shift+T          pick a theme (dwm, bars, Thunar, terminal)
+  Super+Shift+W          pick a wallpaper (thumbnails: m to mark, q to apply)
+  Super+Ctrl+W           random wallpaper
 SCREENSHOTS
   Super+Shift+S          select region -> clipboard
   Print                  full screen -> ~/Pictures
@@ -39,6 +47,9 @@ MOUSE
   Super+Left drag        move window
   Super+Right drag       resize window
   Super+Middle click     toggle floating
+BOTTOM BAR
+  click the brush        pick a theme
+  click the picture      pick a wallpaper (right-click: random)
 MEDIA KEYS
   Volume up/down/mute, brightness up/down
 QUIT

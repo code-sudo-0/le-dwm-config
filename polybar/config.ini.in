@@ -1,0 +1,95 @@
+; polybar bottom bar. install.sh copies this to ~/.config/polybar/config.ini
+; (replacing @HOME@). Colors come from colors.ini, which dwm-theme generates.
+; Click the brush to pick a theme, the picture to pick a wallpaper
+; (right-click the picture for a random one).
+include-file = @HOME@/.config/polybar/colors.ini
+
+[bar/bottom]
+width = 100%
+height = 28
+bottom = true
+override-redirect = true
+fixed-center = true
+background = ${colors.bg}
+foreground = ${colors.fg}
+border-top-size = 1
+border-top-color = ${colors.bg-hi}
+padding-left = 2
+padding-right = 2
+module-margin = 2
+font-0 = "JetBrainsMono Nerd Font:size=10;3"
+modules-left = cpu memory fs temp
+modules-center = uptime
+modules-right = net wall theme
+enable-ipc = true
+cursor-click = pointer
+
+[module/cpu]
+type = internal/cpu
+interval = 2
+format-prefix = " "
+format-prefix-foreground = ${colors.blue}
+label = %percentage:2%%
+
+[module/memory]
+type = internal/memory
+interval = 3
+format-prefix = " "
+format-prefix-foreground = ${colors.magenta}
+label = %percentage_used:2%%
+
+[module/fs]
+type = internal/fs
+interval = 30
+mount-0 = /
+format-mounted = <label-mounted>
+format-mounted-prefix = " "
+format-mounted-prefix-foreground = ${colors.yellow}
+label-mounted = %percentage_used%%
+label-unmounted = n/a
+
+[module/temp]
+type = internal/temperature
+interval = 3
+warn-temperature = 80
+format = <label>
+format-prefix = " "
+format-prefix-foreground = ${colors.green}
+format-warn = <label-warn>
+format-warn-prefix = " "
+format-warn-prefix-foreground = ${colors.red}
+label = %temperature-c%
+label-warn = %temperature-c%
+label-warn-foreground = ${colors.red}
+
+[module/uptime]
+type = custom/script
+exec = uptime -p | sed 's/^up //'
+interval = 60
+format-prefix = " "
+format-prefix-foreground = ${colors.cyan}
+
+[module/net]
+type = internal/network
+interface-type = wireless
+interval = 2
+format-connected = <label-connected>
+label-connected = ↓ %downspeed:8% ↑ %upspeed:8%
+format-disconnected = <label-disconnected>
+label-disconnected = offline
+label-disconnected-foreground = ${colors.red}
+
+[module/wall]
+type = custom/text
+content = " wallpaper"
+content-foreground = ${colors.fg-dim}
+click-left = @HOME@/.local/bin/dwm-wall pick
+click-right = @HOME@/.local/bin/dwm-wall random
+
+[module/theme]
+type = custom/script
+exec = cat @HOME@/.config/dwm-theme/name 2>/dev/null
+interval = 10
+format-prefix = " "
+format-prefix-foreground = ${colors.accent}
+click-left = @HOME@/.local/bin/dwm-theme pick

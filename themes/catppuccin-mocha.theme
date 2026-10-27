@@ -1,0 +1,17 @@
+# Catppuccin Mocha palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Catppuccin Mocha"
+DARK=1
+BG="#1e1e2e"          # main background (bars, windows)
+BG_ALT="#313244"      # raised surfaces
+BG_HI="#45475a"       # borders / highlights
+FG="#cdd6f4"          # main text
+FG_DIM="#7f849c"      # muted text
+ACCENT="#cba6f7"      # selected tag, active border, focus
+ACCENT_FG="#1e1e2e"   # text drawn on top of ACCENT
+RED="#f38ba8"
+GREEN="#a6e3a1"
+YELLOW="#f9e2af"
+BLUE="#89b4fa"
+MAGENTA="#f5c2e7"
+CYAN="#94e2d5"
+ICONS="Papirus-Dark"

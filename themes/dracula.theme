@@ -1,0 +1,17 @@
+# Dracula palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Dracula"
+DARK=1
+BG="#282a36"          # main background (bars, windows)
+BG_ALT="#343746"      # raised surfaces
+BG_HI="#44475a"       # borders / highlights
+FG="#f8f8f2"          # main text
+FG_DIM="#7d88b8"      # muted text
+ACCENT="#bd93f9"      # selected tag, active border, focus
+ACCENT_FG="#282a36"   # text drawn on top of ACCENT
+RED="#ff5555"
+GREEN="#50fa7b"
+YELLOW="#f1fa8c"
+BLUE="#8be9fd"
+MAGENTA="#ff79c6"
+CYAN="#8be9fd"
+ICONS="Papirus-Dark"

@@ -1,0 +1,17 @@
+# Nord palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Nord"
+DARK=1
+BG="#2e3440"          # main background (bars, windows)
+BG_ALT="#3b4252"      # raised surfaces
+BG_HI="#434c5e"       # borders / highlights
+FG="#d8dee9"          # main text
+FG_DIM="#8a94a8"      # muted text
+ACCENT="#88c0d0"      # selected tag, active border, focus
+ACCENT_FG="#2e3440"   # text drawn on top of ACCENT
+RED="#bf616a"
+GREEN="#a3be8c"
+YELLOW="#ebcb8b"
+BLUE="#81a1c1"
+MAGENTA="#b48ead"
+CYAN="#8fbcbb"
+ICONS="Papirus-Dark"
