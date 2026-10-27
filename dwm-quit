@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# dwm-quit - ask before closing dwm (bound to Super+Shift+Q).
+# "No" is the first entry, so an accidental Enter keeps your session.
+BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+# shellcheck source=/dev/null
+[[ -r $HOME/.config/dwm-theme/current.sh ]] && . "$HOME/.config/dwm-theme/current.sh"
+
+answer=$(printf '%s\n' "No, keep dwm" "Yes, close dwm" | dmenu -i -l 2 \
+	-p "Wow, you did it again! Are you sure you want to close dwm?" \
+	-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" -fn "JetBrainsMono Nerd Font:size=11")
+
+[[ $answer == Yes* ]] || exit 0
+
+if [[ ${DWM_RESTARTABLE:-} == 1 ]]; then
+	# tell start-dwm this is a real quit, not a restart
+	touch "${XDG_RUNTIME_DIR:-/tmp}/dwm-quit-$(id -u)"
+fi
+pkill -TERM -x dwm

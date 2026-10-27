@@ -1,30 +1,45 @@
 #!/usr/bin/env bash
-# patch-dwm.sh - reserve space at the bottom of the screen for polybar.
+# patch-dwm.sh - two small, checked edits to dwm.c.
 #
-# Stock dwm only reserves room for its own bar. This changes one line in
-# dwm.c (updatebarpos) so windows stop `bottompad` pixels above the bottom
-# edge. `bottompad` is defined in config.h.
+#  1. bottom bar room (needed): stock dwm only reserves space for its own bar.
+#     This changes one line in updatebarpos() so windows stop `bottompad` pixels
+#     above the bottom edge. `bottompad` is defined in config.h.
+#  2. plain window title (cosmetic): stock dwm paints the whole title area in the
+#     accent color on the focused monitor. This draws it in the normal bar colors
+#     so only the selected tag is highlighted, which looks cleaner.
 #
 # Usage: patch-dwm.sh [path/to/dwm-source]   (default: ~/dwm)
-# Safe to run repeatedly; it refuses to guess if the line is not found.
-set -euo pipefail
+# Safe to run repeatedly. If a line is not found it says so instead of guessing;
+# exit status is 1 only when the required patch (1) could not be applied.
+set -uo pipefail
 
 SRC="${1:-$HOME/dwm}"
 F="$SRC/dwm.c"
-
 [[ -f $F ]] || { echo "patch-dwm: $F not found" >&2; exit 1; }
 
-if grep -q 'm->wh = m->mh - bottompad;' "$F"; then
-	echo "patch-dwm: already applied"
-	exit 0
-fi
+rc=0
 
-if ! grep -q $'^\tm->wh = m->mh;$' "$F"; then
+# --- 1. bottom bar room -------------------------------------------------
+if grep -qF 'm->wh = m->mh - bottompad;' "$F"; then
+	echo "patch-dwm: bottom bar room already applied"
+elif grep -q $'^\tm->wh = m->mh;$' "$F"; then
+	sed -i 's/^\tm->wh = m->mh;$/\tm->wh = m->mh - bottompad;/' "$F"
+	echo "patch-dwm: bottom bar room applied"
+else
 	echo "patch-dwm: could not find 'm->wh = m->mh;' in updatebarpos()." >&2
 	echo "           This dwm.c differs from 6.5; the bottom bar will overlap windows." >&2
 	echo "           Change that line by hand to: m->wh = m->mh - bottompad;" >&2
-	exit 1
+	rc=1
 fi
 
-sed -i 's/^\tm->wh = m->mh;$/\tm->wh = m->mh - bottompad;/' "$F"
-echo "patch-dwm: applied (bottompad reserved in updatebarpos)"
+# --- 2. plain window title ----------------------------------------------
+OLD='drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);'
+NEW='drw_setscheme(drw, scheme[SchemeNorm]);'
+if grep -qF "$OLD" "$F"; then
+	sed -i 's/drw_setscheme(drw, scheme\[m == selmon ? SchemeSel : SchemeNorm\]);/drw_setscheme(drw, scheme[SchemeNorm]);/' "$F"
+	echo "patch-dwm: plain window title applied"
+elif grep -qF 'if (m->sel) {' "$F" && ! grep -qF "$OLD" "$F"; then
+	echo "patch-dwm: window title line not found (or already changed); skipping the cosmetic patch" >&2
+fi
+
+exit $rc

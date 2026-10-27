@@ -2,12 +2,15 @@
 # Session launcher for dwm (used by the login-manager entry and ~/.xinitrc).
 #
 # dwm is relaunched if it is killed, which is how dwm-theme applies new bar
-# colors without ending your session. A normal quit (Super+Shift+Q) exits 0
-# and ends the session; a crash within 3 seconds of starting also ends it,
+# colors without ending your session. Confirming the Super+Shift+Q prompt
+# (dwm-quit) ends the session; a crash within 3 seconds of starting also ends it,
 # so a broken build cannot spin forever.
 BIN="$HOME/.local/bin"
 export PATH="$BIN:$PATH"
 export DWM_RESTARTABLE=1
+
+QUIT_FLAG="${XDG_RUNTIME_DIR:-/tmp}/dwm-quit-$(id -u)"
+rm -f "$QUIT_FLAG"
 
 [ -r "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources"
 
@@ -26,6 +29,8 @@ while :; do
 	"$BIN/dwm"
 	status=$?
 	[ "$status" -eq 0 ] && break
+	# dwm-quit leaves this flag after you confirm "close dwm"
+	if [ -e "$QUIT_FLAG" ]; then rm -f "$QUIT_FLAG"; break; fi
 	[ $(( $(date +%s) - started )) -lt 3 ] && break
 done
 

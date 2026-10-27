@@ -15,7 +15,8 @@ theme switching, a wallpaper manager, and a Thunar that matches everything else.
 | `dwm-wall` | wallpaper manager |
 | `dwm-keys` | keybind cheat sheet (`Super+Shift+/`) |
 | `start-dwm` | session launcher |
-| `patch-dwm.sh` | one-line dwm patch that reserves room for the bottom bar |
+| `patch-dwm.sh` | small dwm patches: room for the bottom bar, plain window title |
+| `dwm-quit` | the "are you sure?" prompt for `Super+Shift+Q` |
 | `install.sh` | one-step setup |
 
 ## Install
@@ -32,7 +33,7 @@ If the packaged `dwm` is installed it can shadow the build: `sudo pacman -R dwm`
 ## Themes
 
 `Super+Shift+T` (or click the brush in the bottom bar) opens a list. One choice recolors
-dwm, both bars, dmenu, alacritty, and GTK apps including Thunar and its icons.
+dwm, both bars, dmenu, kitty, and GTK apps including Thunar and its icons.
 Included: Nord, Gruvbox Dark, Catppuccin Mocha, Catppuccin Latte (light), Tokyo Night, Dracula.
 
 From a terminal: `dwm-theme list`, `dwm-theme set nord`, `dwm-theme current`.
@@ -42,7 +43,7 @@ picking it from the list. A theme is just a dozen color variables.
 
 **Heads-up:** dwm has its colors compiled in, so changing theme rebuilds dwm and restarts it.
 Your programs stay open, but they all reappear on the tag you are viewing. Everything else
-(bottom bar, terminal, GTK) updates live; reopen Thunar to see its new look.
+(bottom bar, kitty, GTK) updates live; reopen Thunar to see its new look.
 
 ## Wallpapers
 
@@ -55,8 +56,10 @@ Put images in `~/Pictures/wallpapers`.
 
 ## Bars
 
-- **Top (dwm):** tags, layout, window title, and on the right a running cat (it speeds up with
-  CPU load), `online ✓` / `offline ✗`, volume, brightness, battery, clock.
+- **Top (dwm):** icon tags (terminal, web, files, code, chat, music, video, games, settings),
+  layout icon, a plain window title (only the active tag is highlighted), and on the right a
+  running cat (it speeds up with CPU load), `online ✓` / `offline ✗`, volume, brightness,
+  battery, clock. Prefer numbered tags? See the comment above `tags[]` in `config.h`.
   "Online" means NetworkManager reports a full connection.
 - **Bottom (polybar):** CPU, RAM, disk, temperature, uptime, network speed (Wi-Fi), plus
   wallpaper and theme buttons.
@@ -80,7 +83,7 @@ Existing files there are backed up once as `*.bak-dwm-theme`.
 - `Super+J/K` focus, `Super+H/L` resize master, `Super+Shift+C` close
 - `Super+1-9` tags, `Super+Shift+1-9` move window to tag
 - `Super+T/F/M` tiled/floating/monocle
-- `Super+Shift+Q` quit dwm
+- `Super+Shift+Q` quit dwm (asks first)
 
 ## Changing things
 
@@ -91,10 +94,11 @@ Existing files there are backed up once as `*.bak-dwm-theme`.
 
 ## Notes
 
-- dwm is X11 only. Foot is Wayland-only, so the terminal is alacritty.
+- dwm is X11 only. Foot is Wayland-only, so the terminal is kitty (which also supports
+  fastfetch images: `fastfetch --logo-type kitty-direct`).
 - dwm now installs to `~/.local/bin` (no sudo needed for theme changes). An older copy in
   `/usr/local/bin` is simply no longer used.
-- The bottom bar relies on `patch-dwm.sh`, which changes one line in `dwm.c`. If your dwm
+- The bottom bar relies on `patch-dwm.sh`, which changes a line or two in `dwm.c`. If your dwm
   source differs from 6.5 the script says so instead of guessing.
 - The network-speed module watches Wi-Fi. For Ethernet change `interface-type` in the polybar config.
 - Tearing was not an issue on an Intel UHD (i3-N305) laptop. If you see it,

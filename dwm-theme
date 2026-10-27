@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # dwm-theme - change the look of the whole setup at once:
-#   dwm bar + borders, polybar, GTK apps (Thunar), alacritty, dmenu.
+#   dwm bar + borders, polybar, GTK apps (Thunar), kitty, dmenu.
 #
 # Usage:
 #   dwm-theme pick                 choose a theme from a dmenu list
@@ -53,40 +53,34 @@ static const char col_accent[] = "$ACCENT";     /* selected bg / active border *
 EOF
 }
 
-gen_alacritty() {
-	write_managed "$HOME/.config/alacritty/dwm-theme.toml" <<EOF
+gen_kitty() {
+	write_managed "$HOME/.config/kitty/dwm-theme.conf" <<EOF
 # $MARK: $NAME
-[colors.primary]
-background = "$BG"
-foreground = "$FG"
-
-[colors.cursor]
-text = "$BG"
-cursor = "$ACCENT"
-
-[colors.selection]
-text = "$ACCENT_FG"
-background = "$ACCENT"
-
-[colors.normal]
-black = "$BG_HI"
-red = "$RED"
-green = "$GREEN"
-yellow = "$YELLOW"
-blue = "$BLUE"
-magenta = "$MAGENTA"
-cyan = "$CYAN"
-white = "$FG"
-
-[colors.bright]
-black = "$FG_DIM"
-red = "$RED"
-green = "$GREEN"
-yellow = "$YELLOW"
-blue = "$BLUE"
-magenta = "$MAGENTA"
-cyan = "$CYAN"
-white = "$FG"
+foreground $FG
+background $BG
+selection_foreground $ACCENT_FG
+selection_background $ACCENT
+cursor $ACCENT
+cursor_text_color $BG
+url_color $BLUE
+active_border_color $ACCENT
+inactive_border_color $BG_HI
+color0 $BG_HI
+color1 $RED
+color2 $GREEN
+color3 $YELLOW
+color4 $BLUE
+color5 $MAGENTA
+color6 $CYAN
+color7 $FG
+color8 $FG_DIM
+color9 $RED
+color10 $GREEN
+color11 $YELLOW
+color12 $BLUE
+color13 $MAGENTA
+color14 $CYAN
+color15 $FG
 EOF
 }
 
@@ -229,6 +223,8 @@ reload() {
 	[[ -n ${DISPLAY:-} ]] || return 0
 
 	restart_polybar
+	# kitty reloads its config on SIGUSR1
+	pkill -USR1 -x kitty 2>/dev/null
 	# GTK apps only read their theme on start
 	pgrep -x thunar >/dev/null 2>&1 && thunar -q 2>/dev/null
 
@@ -256,7 +252,7 @@ set_theme() {
 	cp "$f" "$CONF/current.sh"
 
 	gen_dwm
-	gen_alacritty
+	gen_kitty
 	gen_polybar
 	gen_gtk
 	reload

@@ -5,7 +5,7 @@ static const unsigned int borderpx  = 2;        /* border pixel of windows */
 static const unsigned int snap      = 32;       /* snap pixel */
 static const int showbar            = 1;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
-static const char *fonts[]          = { "JetBrainsMono Nerd Font:size=11", "monospace:size=11" };
+static const char *fonts[]          = { "JetBrainsMono Nerd Font:size=12", "monospace:size=12" };
 static const char dmenufont[]       = "JetBrainsMono Nerd Font:size=11";
 static const int bottompad          = 28;       /* pixels reserved at the bottom for polybar (see patch-dwm.sh) */
 
@@ -18,7 +18,9 @@ static const char *colors[][3]      = {
 };
 
 /* tagging */
-static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+/* tag icons (Nerd Font): terminal, web, files, code, chat, music, video, games, settings.
+ * Prefer plain numbers? Use { "1", "2", "3", "4", "5", "6", "7", "8", "9" }. */
+static const char *tags[] = { "", "", "", "", "", "", "", "", "" };
 
 static const Rule rules[] = {
 	/* xprop(1):
@@ -39,9 +41,9 @@ static const int refreshrate = 120;  /* refresh rate (per second) for client mov
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "[]=",      tile },    /* first entry is default */
-	{ "><>",      NULL },    /* no layout function means floating behavior */
-	{ "[M]",      monocle },
+	{ "",   tile },    /* first entry is default */
+	{ "",   NULL },    /* no layout function means floating behavior */
+	{ "",   monocle },
 };
 
 /* key definitions */
@@ -59,7 +61,7 @@ static const Layout layouts[] = {
 static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
 static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont,
 	"-nb", col_gray1, "-nf", col_gray3, "-sb", col_accent, "-sf", col_gray4, NULL };
-static const char *termcmd[]  = { "alacritty", NULL };   /* swap for "kitty", "st", etc. */
+static const char *termcmd[]  = { "kitty", NULL };
 static const char *browsercmd[] = { "firefox", NULL };
 static const char *filecmd[]    = { "thunar", NULL };
 
@@ -112,7 +114,7 @@ static const Key keys[] = {
 	TAGKEYS(                        XK_7,                      6)
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
-	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
+	{ MODKEY|ShiftMask,             XK_q,      spawn,          SHCMD("$HOME/.local/bin/dwm-quit") },
 	{ MODKEY|ShiftMask,             XK_slash,  spawn,          SHCMD("$HOME/.local/bin/dwm-keys") },
 	{ MODKEY|ShiftMask,             XK_s,      spawn,          {.v = shot_region_clip } },
 	{ MODKEY|ShiftMask,             XK_t,      spawn,          SHCMD("$HOME/.local/bin/dwm-theme pick") },

@@ -20,7 +20,7 @@ fi
 
 echo "==> Installing packages"
 sudo pacman -S --needed base-devel git libx11 libxft libxinerama \
-	xorg-server xorg-xinit xorg-xsetroot dmenu alacritty firefox feh \
+	xorg-server xorg-xinit xorg-xsetroot dmenu kitty firefox feh \
 	brightnessctl wireplumber networkmanager maim slop xclip thunar
 
 # Nice-to-haves: installed one at a time so a missing package cannot abort the rest
@@ -49,6 +49,7 @@ echo "==> Installing scripts to $BIN"
 mkdir -p "$BIN"
 install -m755 "$REPO_DIR/dwmstatus.sh" "$BIN/dwmstatus"
 install -m755 "$REPO_DIR/dwm-keys"     "$BIN/dwm-keys"
+install -m755 "$REPO_DIR/dwm-quit"     "$BIN/dwm-quit"
 install -m755 "$REPO_DIR/dwm-theme"    "$BIN/dwm-theme"
 install -m755 "$REPO_DIR/dwm-wall"     "$BIN/dwm-wall"
 install -m755 "$REPO_DIR/start-dwm"    "$BIN/start-dwm"
@@ -75,19 +76,14 @@ echo "==> Applying theme and building dwm"
 THEME="${THEME:-$(cat "$CONF/current" 2>/dev/null || echo nord)}"
 DWM_SRC="$DWM_SRC" "$BIN/dwm-theme" set "$THEME" --no-restart
 
-echo "==> Terminal theme (alacritty)"
-AL="$HOME/.config/alacritty/alacritty.toml"
-mkdir -p "$(dirname "$AL")"
-if [[ ! -f $AL ]]; then
-	printf '%s\n' '[general]' 'import = ["~/.config/alacritty/dwm-theme.toml"]' '' \
-		'[font]' 'size = 10' '[font.normal]' 'family = "JetBrainsMono Nerd Font"' > "$AL"
-elif grep -q 'dwm-theme.toml' "$AL"; then
-	:
-elif grep -q '^\[general\]' "$AL"; then
-	warn "add this line under [general] in $AL to theme your terminal:"
-	warn '    import = ["~/.config/alacritty/dwm-theme.toml"]'
-else
-	printf '\n%s\n%s\n' '[general]' 'import = ["~/.config/alacritty/dwm-theme.toml"]' >> "$AL"
+echo "==> Terminal theme (kitty)"
+KC="$HOME/.config/kitty/kitty.conf"
+mkdir -p "$(dirname "$KC")"
+if [[ ! -f $KC ]]; then
+	printf '%s\n' 'font_family JetBrainsMono Nerd Font' 'font_size 11.0' \
+		'window_padding_width 6' 'include dwm-theme.conf' > "$KC"
+elif ! grep -q 'dwm-theme.conf' "$KC"; then
+	printf '\n%s\n' 'include dwm-theme.conf' >> "$KC"
 fi
 
 echo "==> Installing session entry (for display managers)"

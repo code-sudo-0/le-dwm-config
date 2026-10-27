@@ -53,5 +53,5 @@ BOTTOM BAR
 MEDIA KEYS
   Volume up/down/mute, brightness up/down
 QUIT
-  Super+Shift+Q          exit dwm
+  Super+Shift+Q          exit dwm (asks first)
 EOF
