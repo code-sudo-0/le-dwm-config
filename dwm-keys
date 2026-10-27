@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# dwm-keys - keybind cheat sheet shown in dmenu (Super+Shift+/)
+# Pick nothing / press Escape to close.
+
+cat <<'EOF' | dmenu -l 40 -i -p "dwm keys" -fn "monospace:size=11" \
+	-nb "#2e3440" -nf "#d8dee9" -sb "#5e81ac" -sf "#eceff4" >/dev/null
+LAUNCH
+  Super+Enter            terminal
+  Super+P                app launcher (dmenu)
+  Super+W                Firefox
+  Super+Shift+/          this cheat sheet
+WINDOWS
+  Super+J / K            focus next / previous
+  Super+Shift+Enter      swap with master
+  Super+H / L            shrink / grow master area
+  Super+I / D            more / fewer windows in master
+  Super+Shift+C          close window
+  Super+Shift+Space      toggle floating
+  Super+B                hide / show bar
+LAYOUTS
+  Super+T                tiled
+  Super+F                floating
+  Super+M                monocle
+  Super+Space            toggle last two layouts
+TAGS
+  Super+1-9              view tag
+  Super+Shift+1-9        move window to tag
+  Super+Ctrl+1-9         show multiple tags
+  Super+0                view all tags
+  Super+Tab              previous tag
+MONITORS
+  Super+, / .            focus prev / next monitor
+  Super+Shift+, / .      send window to prev / next monitor
+MOUSE
+  Super+Left drag        move window
+  Super+Right drag       resize window
+  Super+Middle click     toggle floating
+MEDIA KEYS
+  Volume up/down/mute, brightness up/down
+QUIT
+  Super+Shift+Q          exit dwm
+EOF
