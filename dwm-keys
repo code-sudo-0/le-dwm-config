@@ -8,7 +8,11 @@ LAUNCH
   Super+Enter            terminal
   Super+P                app launcher (dmenu)
   Super+W                Firefox
+  Super+E                Thunar file manager
   Super+Shift+/          this cheat sheet
+SCREENSHOTS
+  Super+Shift+S          select region -> clipboard
+  Print                  full screen -> ~/Pictures
 WINDOWS
   Super+J / K            focus next / previous
   Super+Shift+Enter      swap with master

@@ -16,7 +16,7 @@ fi
 echo "==> Installing packages"
 sudo pacman -S --needed base-devel git libx11 libxft libxinerama \
 	xorg-server xorg-xinit xorg-xsetroot dmenu alacritty firefox feh \
-	brightnessctl wireplumber networkmanager
+	brightnessctl wireplumber networkmanager maim slop xclip thunar
 
 if pacman -Qq dwm &>/dev/null; then
 	echo "!! The packaged 'dwm' is installed and may shadow your build."
@@ -31,6 +31,7 @@ fi
 cp "$REPO_DIR/config.h" "$DWM_SRC/config.h"
 ( cd "$DWM_SRC" && sudo make clean install )
 
+mkdir -p "$HOME/Pictures"
 echo "==> Installing scripts to $BIN"
 mkdir -p "$BIN"
 install -m755 "$REPO_DIR/dwmstatus.sh" "$BIN/dwmstatus"

@@ -64,6 +64,11 @@ static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont,
 	"-nb", col_gray1, "-nf", col_gray3, "-sb", col_accent, "-sf", col_gray4, NULL };
 static const char *termcmd[]  = { "alacritty", NULL };   /* swap for "kitty", "st", etc. */
 static const char *browsercmd[] = { "firefox", NULL };
+static const char *filecmd[]    = { "thunar", NULL };
+
+/* screenshots (needs maim, slop, xclip) */
+static const char *shot_region_clip[] = { "sh", "-c", "maim -s | xclip -selection clipboard -t image/png", NULL };
+static const char *shot_full_file[]   = { "sh", "-c", "maim ~/Pictures/$(date +%F_%H-%M-%S).png", NULL };
 
 /* media keys (CachyOS uses PipeWire -> wpctl; needs brightnessctl for backlight) */
 static const char *volup[]   = { "wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "5%+", NULL };
@@ -79,6 +84,7 @@ static const Key keys[] = {
 	{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
 	{ MODKEY,                       XK_Return, spawn,          {.v = termcmd } },
 	{ MODKEY,                       XK_w,      spawn,          {.v = browsercmd } },
+	{ MODKEY,                       XK_e,      spawn,          {.v = filecmd } },
 	{ MODKEY,                       XK_b,      togglebar,      {0} },
 	{ MODKEY,                       XK_j,      focusstack,     {.i = +1 } },
 	{ MODKEY,                       XK_k,      focusstack,     {.i = -1 } },
@@ -111,6 +117,8 @@ static const Key keys[] = {
 	TAGKEYS(                        XK_9,                      8)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
 	{ MODKEY|ShiftMask,             XK_slash,  spawn,          SHCMD("$HOME/.local/bin/dwm-keys") },
+	{ MODKEY|ShiftMask,             XK_s,      spawn,          {.v = shot_region_clip } },
+	{ 0,                            XK_Print,  spawn,          {.v = shot_full_file } },
 
 	/* media keys */
 	{ 0, XF86XK_AudioRaiseVolume,   spawn, {.v = volup } },

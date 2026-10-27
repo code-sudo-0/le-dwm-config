@@ -28,10 +28,11 @@ If the packaged `dwm` is installed it can shadow the build: `sudo pacman -R dwm`
 
 `Super+Shift+/` opens the full cheat sheet. The basics:
 
-- `Super+Enter` terminal, `Super+P` launcher, `Super+W` Firefox
+- `Super+Enter` terminal, `Super+P` launcher, `Super+W` Firefox, `Super+E` Thunar
 - `Super+J/K` focus, `Super+H/L` resize master, `Super+Shift+C` close
 - `Super+1-9` tags, `Super+Shift+1-9` move window to tag
 - `Super+T/F/M` tiled/floating/monocle
+- `Super+Shift+S` region screenshot to clipboard, `Print` full screenshot to `~/Pictures`
 - `Super+Shift+Q` quit dwm
 
 ## Changing the config
