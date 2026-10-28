@@ -1,0 +1,27 @@
+#!/bin/sh
+# Power menu launched by the native dwm bar button.
+set -u
+
+if command -v dmenu >/dev/null 2>&1; then
+    choice=$(printf '%s\n' 'Suspend' 'Log Out' 'Restart' 'Shut Down' | \
+        dmenu -i -l 4 -p 'Power' -fn 'monospace:size=11' \
+            -nb '#1e1e2e' -nf '#cdd6f4' -sb '#89b4fa' -sf '#11111b') || exit 0
+elif command -v rofi >/dev/null 2>&1; then
+    choice=$(printf '%s\n' 'Suspend' 'Log Out' 'Restart' 'Shut Down' | rofi -dmenu -i -p 'Power') || exit 0
+else
+    command -v notify-send >/dev/null 2>&1 && notify-send 'Power menu unavailable' 'Install dmenu or rofi to use the bar power button.'
+    exit 1
+fi
+
+case "$choice" in
+    'Suspend') systemctl suspend ;;
+    'Log Out')
+        if [ -x "$HOME/.local/bin/dwm-quit" ]; then
+            "$HOME/.local/bin/dwm-quit"
+        elif command -v notify-send >/dev/null 2>&1; then
+            notify-send 'Logout helper missing' 'Create ~/.local/bin/dwm-quit for your session logout command.'
+        fi
+        ;;
+    'Restart') systemctl reboot ;;
+    'Shut Down') systemctl poweroff ;;
+esac

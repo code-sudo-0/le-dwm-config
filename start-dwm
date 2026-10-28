@@ -14,6 +14,12 @@ rm -f "$QUIT_FLAG"
 
 [ -r "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources"
 
+PICOM_PID=""
+if command -v picom >/dev/null 2>&1 && [ -f "$HOME/.config/picom/picom.conf" ]; then
+	picom --config "$HOME/.config/picom/picom.conf" >/dev/null 2>&1 &
+	PICOM_PID=$!
+fi
+
 "$BIN/dwm-wall" restore &
 "$BIN/dwmstatus" &
 STATUS_PID=$!
@@ -34,6 +40,6 @@ while :; do
 	[ $(( $(date +%s) - started )) -lt 3 ] && break
 done
 
-kill "$STATUS_PID" $POLY_PID 2>/dev/null
+kill "$STATUS_PID" $POLY_PID $PICOM_PID 2>/dev/null
 pkill -u "$(id -u)" -x polybar 2>/dev/null
 exit 0

@@ -100,6 +100,14 @@ Existing files there are backed up once as `*.bak-dwm-theme`.
   `/usr/local/bin` is simply no longer used.
 - The bottom bar relies on `patch-dwm.sh`, which changes a line or two in `dwm.c`. If your dwm
   source differs from 6.5 the script says so instead of guessing.
+- Terminal transparency comes from kitty's `background_opacity` (default 0.85, change it in
+  `~/.config/kitty/kitty.conf` or run `KITTY_OPACITY=0.9 ./install.sh`) plus `picom`, which
+  `start-dwm` launches using `~/.config/picom/picom.conf`.
+- `install.sh` keeps an existing `~/dwm/config.h` (so your own patches survive). `FORCE_CONFIG=1 ./install.sh`
+  replaces it with the repo copy after saving a backup. If `dwm-power-menu` is in this repo it is installed too.
+- **Translucent bars:** picom also makes the top bar (dwm) and bottom bar (polybar) see-through via
+  `opacity-rule` in `picom.conf`. Default 80%; change with `BAR_OPACITY=70 ./install.sh`, or edit the
+  numbers in `picom.conf` and restart picom. This fades the bar text slightly too.
 - The network-speed module watches Wi-Fi. For Ethernet change `interface-type` in the polybar config.
 - Tearing was not an issue on an Intel UHD (i3-N305) laptop. If you see it,
   run `picom --backend glx --vsync &` from `start-dwm`.
