@@ -1,0 +1,17 @@
+# Catppuccin Frappe palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Catppuccin Frappe"
+DARK=1
+BG="#303446"         # main background (bars, windows)
+BG_ALT="#292c3c"     # raised surfaces
+BG_HI="#414559"      # borders / highlights
+FG="#c6d0f5"         # main text
+FG_DIM="#a5adce"     # muted text
+ACCENT="#ca9ee6"     # selected tag, active border, focus
+ACCENT_FG="#303446"  # text drawn on top of ACCENT
+RED="#e78284"
+GREEN="#a6d189"
+YELLOW="#e5c890"
+BLUE="#8caaee"
+MAGENTA="#ca9ee6"
+CYAN="#81c8be"
+ICONS="Papirus-Dark"

@@ -18,6 +18,8 @@ LOOK
   Super+Shift+T          pick a theme (dwm, bars, Thunar, terminal)
   Super+Shift+W          pick a wallpaper (thumbnails: m to mark, q to apply)
   Super+Ctrl+W           random wallpaper
+  (terminal) dwm-wall auto on|off   theme follows the wallpaper
+  (terminal) dwm-theme from-image <file>   theme from an image or video
 SCREENSHOTS
   Super+Shift+S          select region -> clipboard
   Print                  full screen -> ~/Pictures

@@ -29,7 +29,7 @@ sudo pacman -S --needed base-devel git libx11 libxft libxinerama \
 echo "==> Installing optional packages (bars, fonts, icons, Thunar extras)"
 for pkg in polybar nsxiv ttf-jetbrains-mono-nerd papirus-icon-theme adwaita-icon-theme \
 	thunar-archive-plugin thunar-volman file-roller gvfs tumbler ffmpegthumbnailer \
-	noto-fonts xorg-xrdb; do
+	noto-fonts xorg-xrdb python-pillow ffmpeg; do
 	sudo pacman -S --needed --noconfirm "$pkg" || warn "could not install $pkg (skipping)"
 done
 
@@ -65,6 +65,7 @@ install -m755 "$REPO_DIR/dwm-keys"     "$BIN/dwm-keys"
 install -m755 "$REPO_DIR/dwm-quit"     "$BIN/dwm-quit"
 install -m755 "$REPO_DIR/dwm-theme"    "$BIN/dwm-theme"
 install -m755 "$REPO_DIR/dwm-wall"     "$BIN/dwm-wall"
+install -m755 "$REPO_DIR/dwm-palette"  "$BIN/dwm-palette"
 install -m755 "$REPO_DIR/start-dwm"    "$BIN/start-dwm"
 [[ -f $REPO_DIR/dwm-power-menu ]] && install -m755 "$REPO_DIR/dwm-power-menu" "$BIN/dwm-power-menu"
 

@@ -1,0 +1,17 @@
+# Catppuccin Macchiato palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Catppuccin Macchiato"
+DARK=1
+BG="#24273a"         # main background (bars, windows)
+BG_ALT="#1e2030"     # raised surfaces
+BG_HI="#363a4f"      # borders / highlights
+FG="#cad3f5"         # main text
+FG_DIM="#a5adcb"     # muted text
+ACCENT="#c6a0f6"     # selected tag, active border, focus
+ACCENT_FG="#24273a"  # text drawn on top of ACCENT
+RED="#ed8796"
+GREEN="#a6da95"
+YELLOW="#eed49f"
+BLUE="#8aadf4"
+MAGENTA="#c6a0f6"
+CYAN="#8bd5ca"
+ICONS="Papirus-Dark"

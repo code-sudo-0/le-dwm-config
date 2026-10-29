@@ -1,0 +1,17 @@
+# Gruvbox Light palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Gruvbox Light"
+DARK=0
+BG="#fbf1c7"         # main background (bars, windows)
+BG_ALT="#ebdbb2"     # raised surfaces
+BG_HI="#d5c4a1"      # borders / highlights
+FG="#3c3836"         # main text
+FG_DIM="#7c6f64"     # muted text
+ACCENT="#af3a03"     # selected tag, active border, focus
+ACCENT_FG="#fbf1c7"  # text drawn on top of ACCENT
+RED="#cc241d"
+GREEN="#79740e"
+YELLOW="#b57614"
+BLUE="#076678"
+MAGENTA="#8f3f71"
+CYAN="#427b58"
+ICONS="Papirus"

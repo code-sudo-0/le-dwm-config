@@ -1,0 +1,17 @@
+# Kanagawa palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Kanagawa"
+DARK=1
+BG="#1f1f28"         # main background (bars, windows)
+BG_ALT="#2a2a37"     # raised surfaces
+BG_HI="#363646"      # borders / highlights
+FG="#dcd7ba"         # main text
+FG_DIM="#a6a69c"     # muted text
+ACCENT="#7e9cd8"     # selected tag, active border, focus
+ACCENT_FG="#1f1f28"  # text drawn on top of ACCENT
+RED="#c34043"
+GREEN="#76946a"
+YELLOW="#c0a36e"
+BLUE="#7e9cd8"
+MAGENTA="#957fb8"
+CYAN="#6a9589"
+ICONS="Papirus-Dark"

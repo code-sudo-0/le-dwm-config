@@ -34,7 +34,9 @@ If the packaged `dwm` is installed it can shadow the build: `sudo pacman -R dwm`
 
 `Super+Shift+T` (or click the brush in the bottom bar) opens a list. One choice recolors
 dwm, both bars, dmenu, kitty, and GTK apps including Thunar and its icons.
-Included: Nord, Gruvbox Dark, Catppuccin Mocha, Catppuccin Latte (light), Tokyo Night, Dracula.
+Included (17): Nord, Gruvbox Dark/Light, Catppuccin Mocha/Macchiato/Frappe/Latte (light), Tokyo Night, Dracula,
+Rose Pine, Rose Pine Dawn (light), Everforest Dark, Solarized Dark, One Dark, Kanagawa, Ayu Mirage, GitHub Dark.
+The "Wallpaper (auto)" theme appears in the list once you have made one from a picture (see below).
 
 From a terminal: `dwm-theme list`, `dwm-theme set nord`, `dwm-theme current`.
 
@@ -126,6 +128,28 @@ Existing files there are backed up once as `*.bak-dwm-theme`.
 - The network-speed module watches Wi-Fi. For Ethernet change `interface-type` in the polybar config.
 - Tearing was not an issue on an Intel UHD (i3-N305) laptop. If you see it,
   run `picom --backend glx --vsync &` from `start-dwm`.
+
+## Themes from your wallpaper
+
+```
+dwm-wall auto on                 # from now on, every wallpaper change recolors the whole setup
+dwm-wall auto off
+dwm-theme from-image ~/Pictures/wallpapers/x.jpg        # one-off, from an image
+dwm-theme from-image --light ~/Pictures/wallpapers/x.jpg   # light version
+dwm-theme from-image ~/Videos/live.mp4                  # from a video / live wallpaper
+```
+
+`dwm-palette` picks the dominant color of the picture for the backgrounds and the most vivid color for the
+accent, and nudges every text color until it is readable. Red/green/yellow/blue/magenta/cyan keep their fixed
+hues so terminal colors still mean what they should. The result is saved as the "Wallpaper (auto)" theme, which
+also shows up in the theme picker. Needs `python-pillow` (and `ffmpeg` for videos); `install.sh` installs both.
+
+- Changing the theme rebuilds and restarts dwm (about a second), so auto mode does that on every wallpaper
+  change. If the new colors are identical to the current ones nothing is rebuilt.
+- Logging in never re-themes: `dwm-wall restore` only puts the wallpaper back.
+- **Live wallpapers:** colors are sampled once, from five frames spread across the video, not continuously
+  (continuous recoloring would rebuild dwm over and over). Add one line to the script that starts your live
+  wallpaper, e.g. `dwm-theme from-image ~/Videos/live.mp4`, so the theme matches whenever it changes.
 
 ## Releasing
 

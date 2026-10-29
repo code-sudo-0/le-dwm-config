@@ -1,0 +1,17 @@
+# Rose Pine palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Rose Pine"
+DARK=1
+BG="#191724"         # main background (bars, windows)
+BG_ALT="#1f1d2e"     # raised surfaces
+BG_HI="#26233a"      # borders / highlights
+FG="#e0def4"         # main text
+FG_DIM="#908caa"     # muted text
+ACCENT="#c4a7e7"     # selected tag, active border, focus
+ACCENT_FG="#191724"  # text drawn on top of ACCENT
+RED="#eb6f92"
+GREEN="#31748f"
+YELLOW="#f6c177"
+BLUE="#9ccfd8"
+MAGENTA="#c4a7e7"
+CYAN="#ebbcba"
+ICONS="Papirus-Dark"

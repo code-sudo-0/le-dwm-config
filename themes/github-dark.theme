@@ -1,0 +1,17 @@
+# GitHub Dark palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="GitHub Dark"
+DARK=1
+BG="#0d1117"         # main background (bars, windows)
+BG_ALT="#161b22"     # raised surfaces
+BG_HI="#30363d"      # borders / highlights
+FG="#c9d1d9"         # main text
+FG_DIM="#8b949e"     # muted text
+ACCENT="#58a6ff"     # selected tag, active border, focus
+ACCENT_FG="#0d1117"  # text drawn on top of ACCENT
+RED="#ff7b72"
+GREEN="#7ee787"
+YELLOW="#e3b341"
+BLUE="#79c0ff"
+MAGENTA="#d2a8ff"
+CYAN="#56d4dd"
+ICONS="Papirus-Dark"

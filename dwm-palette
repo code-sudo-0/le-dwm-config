@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""dwm-palette - build a dwm-theme palette from wallpaper image(s).
+
+Usage: dwm-palette [--light] [--name NAME] image [image ...]
+Prints a .theme file (same format as ~/.config/dwm-theme/themes/*.theme) on stdout.
+
+How it works: pixels are shrunk, the dominant hue (weighted by how colorful each
+pixel is, so black/white/grey do not count) tints the backgrounds, and the most
+vivid secondary hue (or the dominant one) becomes the accent. Red/green/yellow/
+blue/magenta/cyan stay at fixed hues so terminal colors keep their meaning. Every
+text color is nudged until it is readable on the background (WCAG contrast).
+Needs python-pillow.
+"""
+import argparse
+import colorsys
+import math
+import sys
+
+try:
+    from PIL import Image
+except ImportError:
+    sys.exit("dwm-palette: python-pillow is missing (sudo pacman -S python-pillow)")
+
+
+def to_hex(h, l, s):
+    r, g, b = colorsys.hls_to_rgb((h % 360) / 360.0, min(1, max(0, l)), min(1, max(0, s)))
+    return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
+
+
+def lum(hexc):
+    def f(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hexc[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+
+def contrast(a, b):
+    la, lb = sorted((lum(a), lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def readable(h, l, s, bg, target, dark):
+    """Move lightness away from the background until contrast >= target."""
+    step = 0.02 if dark else -0.02
+    for _ in range(60):
+        c = to_hex(h, l, s)
+        if contrast(c, bg) >= target:
+            return c
+        l += step
+        if l > 1 or l < 0:
+            break
+    return to_hex(h, 1.0 if dark else 0.0, s)
+
+
+def load_pixels(paths):
+    px = []
+    for p in paths:
+        try:
+            with Image.open(p) as im:
+                im = im.convert("RGB")
+                im.thumbnail((96, 96))
+                d = im.tobytes()
+        except Exception as e:  # unreadable file: skip it, fail later if nothing is left
+            print("dwm-palette: skipping %s (%s)" % (p, e), file=sys.stderr)
+            continue
+        px += [(d[i], d[i + 1], d[i + 2]) for i in range(0, len(d) - 2, 3)]
+    return px
+
+
+def analyse(px):
+    """Return (dominant_hue, accent_hue, mean_saturation, colorful) for the pixels."""
+    items = []          # (hue_deg, weight, saturation)
+    for r, g, b in px:
+        h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+        w = s * (1 - abs(2 * l - 1))
+        if w >= 0.02:
+            items.append((h * 360, w, s))
+    total = sum(w for _, w, _ in items)
+    if not items or total < 0.01 * len(px):
+        return 220.0, 220.0, 0.0, False          # basically grey: calm blue tint
+    bins = [0.0] * 36
+    for h, w, _ in items:
+        bins[int(h // 10) % 36] += w
+    smooth = [bins[i - 1] + 2 * bins[i] + bins[(i + 1) % 36] for i in range(36)]
+
+    def mean_hue(center):
+        sx = sy = 0.0
+        for h, w, _ in items:
+            d = abs((h - center + 180) % 360 - 180)
+            if d <= 30:
+                sx += w * math.cos(math.radians(h))
+                sy += w * math.sin(math.radians(h))
+        return math.degrees(math.atan2(sy, sx)) % 360
+
+    top = max(range(36), key=lambda i: smooth[i])
+    base = mean_hue(top * 10 + 5)
+    accent = base
+    # a clearly different second color that is still well represented becomes the accent
+    far = [i for i in range(36) if abs((i * 10 + 5 - base + 180) % 360 - 180) >= 40]
+    if far:
+        second = max(far, key=lambda i: smooth[i])
+        if smooth[second] >= 0.45 * smooth[top]:
+            accent = mean_hue(second * 10 + 5)
+    mean_s = sum(w * s for _, w, s in items) / total
+    return base, accent, mean_s, True
+
+
+def build(base, accent_h, mean_s, light):
+    if light:
+        bg_s = min(0.45, 0.15 + 0.30 * mean_s)
+        BG = to_hex(base, 0.94, bg_s)
+        BG_ALT = to_hex(base, 0.90, bg_s)
+        BG_HI = to_hex(base, 0.82, bg_s * 0.9)
+        FG = readable(base, 0.20, 0.25, BG, 9.0, False)
+        FG_DIM = readable(base, 0.42, 0.15, BG, 4.5, False)
+        ACCENT = readable(accent_h, 0.45, 0.65, BG, 4.5, False)
+        sem_l, sem_s, target = 0.40, 0.60, 4.5
+    else:
+        bg_s = min(0.35, 0.12 + 0.30 * mean_s)
+        BG = to_hex(base, 0.11, bg_s)
+        BG_ALT = to_hex(base, 0.15, bg_s)
+        BG_HI = to_hex(base, 0.24, bg_s * 0.9)
+        FG = readable(base, 0.85, 0.25, BG, 9.0, True)
+        FG_DIM = readable(base, 0.60, 0.15, BG, 4.5, True)
+        ACCENT = readable(accent_h, 0.66, 0.65, BG, 4.5, True)
+        sem_l, sem_s, target = 0.68, 0.60, 4.5
+    # text on the accent: the background color if readable, else black or white
+    if contrast(BG, ACCENT) >= 4.5:
+        ACCENT_FG = BG
+    else:
+        ACCENT_FG = max(("#000000", "#ffffff"), key=lambda c: contrast(c, ACCENT))
+    hues = {"RED": 355, "GREEN": 125, "YELLOW": 45, "BLUE": 215, "MAGENTA": 295, "CYAN": 180}
+    sem = {k: readable(h, sem_l, sem_s, BG, target, not light) for k, h in hues.items()}
+    return dict(BG=BG, BG_ALT=BG_ALT, BG_HI=BG_HI, FG=FG, FG_DIM=FG_DIM,
+                ACCENT=ACCENT, ACCENT_FG=ACCENT_FG, **sem)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="dwm-theme palette from wallpaper image(s)")
+    ap.add_argument("images", nargs="+")
+    ap.add_argument("--light", action="store_true", help="make a light theme (default is dark)")
+    ap.add_argument("--name", default="Wallpaper (auto)")
+    a = ap.parse_args()
+    px = load_pixels(a.images)
+    if not px:
+        sys.exit("dwm-palette: no readable image given")
+    base, acc, mean_s, colorful = analyse(px)
+    pal = build(base, acc, mean_s, a.light)
+    cm = {"BG": "main background (bars, windows)", "BG_ALT": "raised surfaces",
+          "BG_HI": "borders / highlights", "FG": "main text", "FG_DIM": "muted text",
+          "ACCENT": "selected tag, active border, focus", "ACCENT_FG": "text drawn on top of ACCENT"}
+    print("# Generated by dwm-palette from the wallpaper; regenerated whenever auto theme runs.")
+    print('NAME="%s"' % a.name)
+    print("DARK=%d" % (0 if a.light else 1))
+    for k in ("BG", "BG_ALT", "BG_HI", "FG", "FG_DIM", "ACCENT", "ACCENT_FG",
+              "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN"):
+        line = '%s="%s"' % (k, pal[k])
+        print(line + (" " * max(1, 22 - len(line)) + "# " + cm[k] if k in cm else ""))
+    print('ICONS="%s"' % ("Papirus" if a.light else "Papirus-Dark"))
+    print("dwm-palette: hue %.0f, accent hue %.0f%s" % (base, acc, "" if colorful else " (grey image)"),
+          file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

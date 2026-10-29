@@ -7,6 +7,8 @@
 #   dwm-wall random      switch to a random wallpaper
 #   dwm-wall set <file>  use a specific image
 #   dwm-wall restore     re-apply the last wallpaper (run at login)
+#   dwm-wall auto on|off|status   make the whole theme follow the wallpaper
+#                        (on = every set/random/pick also runs: dwm-theme from-image <wallpaper>)
 #
 # Wallpapers live in ~/Pictures/wallpapers (override with DWM_WALL_DIR).
 set -o pipefail
@@ -14,6 +16,8 @@ set -o pipefail
 WALL_DIR="${DWM_WALL_DIR:-$HOME/Pictures/wallpapers}"
 CONF="$HOME/.config/dwm-theme"
 STATE="$CONF/wallpaper"
+AUTO="$CONF/auto-theme"          # exists = theme follows the wallpaper
+BIN="$HOME/.local/bin"
 mkdir -p "$CONF" "$WALL_DIR"
 
 msg() { echo "dwm-wall: $*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a dwm-wall "$*" 2>/dev/null; return 0; }
@@ -31,13 +35,24 @@ set_wall() {
 	printf '%s\n' "$f" > "$STATE"
 }
 
+# When auto theme is on, recolor everything from the wallpaper that was just set.
+# (Not used by `restore`, so logging in never triggers a rebuild.)
+auto_theme() {
+	[[ -f $AUTO ]] || return 0
+	if [[ -x $BIN/dwm-theme ]]; then "$BIN/dwm-theme" from-image "$1" >/dev/null 2>&1
+	elif command -v dwm-theme >/dev/null 2>&1; then dwm-theme from-image "$1" >/dev/null 2>&1
+	fi
+}
+
+themed_set() { set_wall "$1" && auto_theme "$1"; }
+
 random_wall() {
 	local cur pick
 	cur=$(cat "$STATE" 2>/dev/null)
 	pick=$(list_walls | grep -vxF "$cur" | shuf -n1)
 	[[ -n $pick ]] || pick=$(list_walls | shuf -n1)
 	[[ -n $pick ]] || { msg "no images in $WALL_DIR"; return 1; }
-	set_wall "$pick"
+	themed_set "$pick"
 }
 
 restore() {
@@ -72,7 +87,7 @@ pick() {
 			-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" -fn "JetBrainsMono Nerd Font:size=11")
 		[[ -n $choice ]] && choice="$WALL_DIR/$choice"
 	fi
-	[[ -n $choice ]] && set_wall "$choice"
+	[[ -n $choice ]] && themed_set "$choice"
 }
 
 case ${1:-pick} in
@@ -81,10 +96,23 @@ case ${1:-pick} in
 	restore) restore ;;
 	set)
 		[[ -n ${2:-} ]] || { echo "usage: dwm-wall set <file>" >&2; exit 1; }
-		set_wall "$2"
+		themed_set "$2"
+		;;
+	auto)
+		case ${2:-status} in
+			on)
+				touch "$AUTO"
+				msg "theme now follows the wallpaper"
+				cur=$(cat "$STATE" 2>/dev/null)
+				[[ -f $cur ]] && auto_theme "$cur"
+				;;
+			off) rm -f "$AUTO"; msg "theme no longer follows the wallpaper" ;;
+			status) if [[ -f $AUTO ]]; then echo on; else echo off; fi ;;
+			*) echo "usage: dwm-wall auto on|off|status" >&2; exit 1 ;;
+		esac
 		;;
 	*)
-		sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
 		exit 1
 		;;
 esac

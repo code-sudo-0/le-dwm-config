@@ -1,0 +1,17 @@
+# Rose Pine Dawn palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Rose Pine Dawn"
+DARK=0
+BG="#faf4ed"         # main background (bars, windows)
+BG_ALT="#fffaf3"     # raised surfaces
+BG_HI="#dfdad9"      # borders / highlights
+FG="#575279"         # main text
+FG_DIM="#797593"     # muted text
+ACCENT="#286983"     # selected tag, active border, focus
+ACCENT_FG="#faf4ed"  # text drawn on top of ACCENT
+RED="#b4637a"
+GREEN="#286983"
+YELLOW="#ea9d34"
+BLUE="#56949f"
+MAGENTA="#907aa9"
+CYAN="#d7827e"
+ICONS="Papirus"

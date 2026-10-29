@@ -1,0 +1,17 @@
+# One Dark palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="One Dark"
+DARK=1
+BG="#282c34"         # main background (bars, windows)
+BG_ALT="#2c313a"     # raised surfaces
+BG_HI="#3e4451"      # borders / highlights
+FG="#abb2bf"         # main text
+FG_DIM="#7f848e"     # muted text
+ACCENT="#61afef"     # selected tag, active border, focus
+ACCENT_FG="#282c34"  # text drawn on top of ACCENT
+RED="#e06c75"
+GREEN="#98c379"
+YELLOW="#e5c07b"
+BLUE="#61afef"
+MAGENTA="#c678dd"
+CYAN="#56b6c2"
+ICONS="Papirus-Dark"

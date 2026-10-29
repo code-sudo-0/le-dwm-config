@@ -1,0 +1,17 @@
+# Solarized Dark palette (sourced by dwm-theme). Copy this file to make your own theme.
+NAME="Solarized Dark"
+DARK=1
+BG="#002b36"         # main background (bars, windows)
+BG_ALT="#073642"     # raised surfaces
+BG_HI="#586e75"      # borders / highlights
+FG="#93a1a1"         # main text
+FG_DIM="#657b83"     # muted text
+ACCENT="#268bd2"     # selected tag, active border, focus
+ACCENT_FG="#002b36"  # text drawn on top of ACCENT
+RED="#dc322f"
+GREEN="#859900"
+YELLOW="#b58900"
+BLUE="#268bd2"
+MAGENTA="#d33682"
+CYAN="#2aa198"
+ICONS="Papirus-Dark"
