@@ -1,5 +1,5 @@
 diff --git a/dwm.c b/dwm.c
-index 421704c..bf722e0 100644
+index 421704c..c671fa1 100644
 --- a/dwm.c
 +++ b/dwm.c
 @@ -56,14 +56,29 @@
@@ -265,7 +265,7 @@ index 421704c..bf722e0 100644
  	}
  
 +	/* Clickable power button on the native dwm bar. */
-+	drw_setscheme(drw, scheme[SchemeSel]);
++	drw_setscheme(drw, scheme[SchemeNorm]);
 +	drw_text(drw, m->ww - pw - stw, 0, pw, bh, lrpad / 2, powertext, 0);
 +
 +	resizebarwin(m);
@@ -365,6 +365,15 @@ index 421704c..bf722e0 100644
  	if (!XGetWindowAttributes(dpy, ev->window, &wa) || wa.override_redirect)
  		return;
  	if (!wintoclient(ev->window))
+@@ -1128,7 +1264,7 @@ monocle(Monitor *m)
+ 	if (n > 0) /* override layout symbol */
+ 		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%d]", n);
+ 	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
+-		resize(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 0);
++		resize(c, m->wx + gappx, m->wy + gappx, m->ww - 2 * c->bw - 2 * gappx, m->wh - 2 * c->bw - 2 * gappx, 0);
+ }
+ 
+ void
 @@ -1231,6 +1367,17 @@ propertynotify(XEvent *e)
  	Window trans;
  	XPropertyEvent *ev = &e->xproperty;
@@ -526,7 +535,66 @@ index 421704c..bf722e0 100644
  	/* init bars */
  	updatebars();
  	updatestatus();
-@@ -1729,7 +1930,18 @@ togglebar(const Arg *arg)
+@@ -1696,31 +1897,43 @@ tagmon(const Arg *arg)
+ 	sendmon(selmon->sel, dirtomon(arg->i));
+ }
+ 
++/* le-dwm-config: gaps */
+ void
+ tile(Monitor *m)
+ {
+-	unsigned int i, n, h, mw, my, ty;
++	unsigned int i, n, nm;
++	int g = gappx, aw, mw, sw, sx = 0, my, ty, h;
+ 	Client *c;
+ 
+ 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+ 	if (n == 0)
+ 		return;
+ 
+-	if (n > m->nmaster)
+-		mw = m->nmaster ? m->ww * m->mfact : 0;
+-	else
+-		mw = m->ww;
+-	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+-		if (i < m->nmaster) {
+-			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
+-			resize(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 0);
+-			if (my + HEIGHT(c) < m->wh)
+-				my += HEIGHT(c);
++	nm = MIN(n, m->nmaster);
++	aw = m->ww - 2 * g;                    /* width inside the outer gaps */
++	if (nm && n > nm) {                    /* master column + stack column */
++		mw = (int)((aw - g) * m->mfact);
++		sw = aw - g - mw;
++		sx = m->wx + g + mw + g;
++	} else if (nm) {                       /* only master windows */
++		mw = aw;
++		sw = 0;
++	} else {                               /* nmaster == 0: everything in the stack */
++		mw = 0;
++		sw = aw;
++		sx = m->wx + g;
++	}
++	for (i = 0, my = ty = g, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
++		if (i < nm) {
++			h = (m->wh - my - g - (int)(nm - i - 1) * g) / (int)(nm - i);
++			resize(c, m->wx + g, m->wy + my, mw - 2 * c->bw, h - 2 * c->bw, 0);
++			if (my + HEIGHT(c) + g < m->wh)
++				my += HEIGHT(c) + g;
+ 		} else {
+-			h = (m->wh - ty) / (n - i);
+-			resize(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 0);
+-			if (ty + HEIGHT(c) < m->wh)
+-				ty += HEIGHT(c);
++			h = (m->wh - ty - g - (int)(n - i - 1) * g) / (int)(n - i);
++			resize(c, sx, m->wy + ty, sw - 2 * c->bw, h - 2 * c->bw, 0);
++			if (ty + HEIGHT(c) + g < m->wh)
++				ty += HEIGHT(c) + g;
+ 		}
+ }
+ 
+@@ -1729,7 +1942,18 @@ togglebar(const Arg *arg)
  {
  	selmon->showbar = !selmon->showbar;
  	updatebarpos(selmon);
@@ -546,7 +614,7 @@ index 421704c..bf722e0 100644
  	arrange(selmon);
  }
  
-@@ -1825,11 +2037,18 @@ unmapnotify(XEvent *e)
+@@ -1825,11 +2049,18 @@ unmapnotify(XEvent *e)
  		else
  			unmanage(c, 0);
  	}
@@ -565,7 +633,7 @@ index 421704c..bf722e0 100644
  	Monitor *m;
  	XSetWindowAttributes wa = {
  		.override_redirect = True,
-@@ -1840,10 +2059,15 @@ updatebars(void)
+@@ -1840,10 +2071,15 @@ updatebars(void)
  	for (m = mons; m; m = m->next) {
  		if (m->barwin)
  			continue;
@@ -582,7 +650,7 @@ index 421704c..bf722e0 100644
  		XMapRaised(dpy, m->barwin);
  		XSetClassHint(dpy, m->barwin, &ch);
  	}
-@@ -1853,7 +2077,7 @@ void
+@@ -1853,7 +2089,7 @@ void
  updatebarpos(Monitor *m)
  {
  	m->wy = m->my;
@@ -591,7 +659,7 @@ index 421704c..bf722e0 100644
  	if (m->showbar) {
  		m->wh -= bh;
  		m->by = m->topbar ? m->wy : m->wy + m->wh;
-@@ -2021,6 +2245,125 @@ updatestatus(void)
+@@ -2021,6 +2257,125 @@ updatestatus(void)
  	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext)))
  		strcpy(stext, "dwm-"VERSION);
  	drawbar(selmon);
@@ -717,7 +785,7 @@ index 421704c..bf722e0 100644
  }
  
  void
-@@ -2088,6 +2431,16 @@ wintoclient(Window w)
+@@ -2088,6 +2443,16 @@ wintoclient(Window w)
  	return NULL;
  }
  
@@ -734,7 +802,7 @@ index 421704c..bf722e0 100644
  Monitor *
  wintomon(Window w)
  {
-@@ -2141,6 +2494,22 @@ xerrorstart(Display *dpy, XErrorEvent *ee)
+@@ -2141,6 +2506,22 @@ xerrorstart(Display *dpy, XErrorEvent *ee)
  	return -1;
  }
  

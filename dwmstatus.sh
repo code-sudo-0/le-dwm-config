@@ -13,7 +13,7 @@ cpu=0
 prev_total=0
 prev_idle=0
 
-bat="" vol="" bri="" net=""
+bat="" vol="" bri="" net="" bt=""
 last_slow=0
 last_net=0
 
@@ -25,6 +25,7 @@ ICON_BRI=""
 ICON_BOLT=""
 ICON_CLOCK=""
 BAT_ICONS=("" "" "" "" "")
+ICON_BT=$'\uf293'   # bluetooth
 
 read_cpu() {
 	local _ user nice system idle iowait irq softirq steal
@@ -90,6 +91,21 @@ read_net() {
 	fi
 }
 
+# bluetooth: off / on / connected (omitted when there is no adapter or no bluetoothctl)
+read_bt() {
+	bt=""
+	command -v bluetoothctl >/dev/null 2>&1 || return 0
+	local info n
+	info=$(timeout 2 bluetoothctl show 2>/dev/null) || return 0
+	[[ -n $info ]] || return 0
+	if [[ $info != *"Powered: yes"* ]]; then
+		bt="${ICON_BT} off"
+		return 0
+	fi
+	n=$(timeout 2 bluetoothctl devices Connected 2>/dev/null | grep -c '^Device')
+	if ((n > 0)); then bt="${ICON_BT} connected"; else bt="${ICON_BT} on"; fi
+}
+
 draw_cat() {
 	local sprite lpad rpad
 	if ((frame % 2)); then sprite="=^.^="; else sprite="=^-^="; fi
@@ -102,13 +118,14 @@ while true; do
 	printf -v now '%(%s)T' -1
 
 	if ((now - last_slow >= 2)); then read_slow; last_slow=$now; fi
-	if ((now - last_net >= 5)); then read_net; last_net=$now; fi
+	if ((now - last_net >= 5)); then read_net; read_bt; last_net=$now; fi
 
 	read_cpu
 	draw_cat
 	printf -v clock '%(%a %b %d  %I:%M %p)T' -1
 
 	out=" ${CAT}${SEP}${net}"
+	[[ -n $bt ]] && out+="${SEP}${bt}"
 	[[ -n $vol ]] && out+="${SEP}${vol}"
 	[[ -n $bri ]] && out+="${SEP}${bri}"
 	[[ -n $bat ]] && out+="${SEP}${bat}"

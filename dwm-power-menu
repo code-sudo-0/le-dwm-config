@@ -1,11 +1,23 @@
 #!/bin/sh
-# Power menu launched by the native dwm bar button.
+# Power menu launched by the power button on dwm's top bar.
+# Same four actions as before; colors and font now follow the active theme
+# (the same way dwm-keys and the theme picker do), laid out as one line like dmenu_run.
 set -u
 
+BG="#1e1e2e" FG="#cdd6f4" ACCENT="#89b4fa" ACCENT_FG="#11111b"
+# shellcheck source=/dev/null
+[ -r "$HOME/.config/dwm-theme/current.sh" ] && . "$HOME/.config/dwm-theme/current.sh"
+
+# Nerd Font icons: moon, sign-out, refresh, power
+I_SUSPEND=$(printf '\357\206\206')
+I_LOGOUT=$(printf '\357\202\213')
+I_RESTART=$(printf '\357\200\241')
+I_OFF=$(printf '\357\200\221')
+
 if command -v dmenu >/dev/null 2>&1; then
-    choice=$(printf '%s\n' 'Suspend' 'Log Out' 'Restart' 'Shut Down' | \
-        dmenu -i -l 4 -p 'Power' -fn 'monospace:size=11' \
-            -nb '#1e1e2e' -nf '#cdd6f4' -sb '#89b4fa' -sf '#11111b') || exit 0
+    choice=$(printf '%s\n' "$I_SUSPEND  Suspend" "$I_LOGOUT  Log Out" "$I_RESTART  Restart" "$I_OFF  Shut Down" | \
+        dmenu -i -p 'Power' -fn 'JetBrainsMono Nerd Font:size=11' \
+            -nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG") || exit 0
 elif command -v rofi >/dev/null 2>&1; then
     choice=$(printf '%s\n' 'Suspend' 'Log Out' 'Restart' 'Shut Down' | rofi -dmenu -i -p 'Power') || exit 0
 else
@@ -14,14 +26,14 @@ else
 fi
 
 case "$choice" in
-    'Suspend') systemctl suspend ;;
-    'Log Out')
+    *'Suspend') systemctl suspend ;;
+    *'Log Out')
         if [ -x "$HOME/.local/bin/dwm-quit" ]; then
             "$HOME/.local/bin/dwm-quit"
         elif command -v notify-send >/dev/null 2>&1; then
             notify-send 'Logout helper missing' 'Create ~/.local/bin/dwm-quit for your session logout command.'
         fi
         ;;
-    'Restart') systemctl reboot ;;
-    'Shut Down') systemctl poweroff ;;
+    *'Restart') systemctl reboot ;;
+    *'Shut Down') systemctl poweroff ;;
 esac

@@ -105,9 +105,39 @@ Existing files there are backed up once as `*.bak-dwm-theme`.
   `start-dwm` launches using `~/.config/picom/picom.conf`.
 - `install.sh` keeps an existing `~/dwm/config.h` (so your own patches survive). `FORCE_CONFIG=1 ./install.sh`
   replaces it with the repo copy after saving a backup. If `dwm-power-menu` is in this repo it is installed too.
+- **Gaps:** `patch-dwm.py` (run by `patch-dwm.sh`, so by `install.sh`) replaces `tile()` and `monocle()` with
+  gap-aware versions and adds `static const int gappx = 8;` to `config.h` if missing. Change the number in
+  `config.h` and run `dwm-theme set "$(dwm-theme current)"` to rebuild. It also draws the top-bar power button
+  without the accent box and trims `powertext` to just the icon. Each file is backed up once as `*.bak-le-dwm`.
+- **Power menu:** `dwm-power-menu` follows the active theme (colors and Nerd Font). The status bar shows Bluetooth
+  (`off` / `on` / `connected`) from `bluetoothctl`. blueman's own tray icon cannot take theme colors. To hide it and keep
+  the themed text icon, try disabling blueman's StatusIcon plugin (check the key first with
+  `gsettings list-recursively org.blueman.general`, then
+  `gsettings set org.blueman.general plugin-list "['!StatusIcon']"` and restart `blueman-applet`;
+  undo with `gsettings reset org.blueman.general plugin-list`).
+- **Animations:** with picom 12+ (Arch ships 13) the installer adds an `animations` block to `picom.conf`:
+  windows pop in/out when opened and closed, and tiled windows glide to their new spots (the experimental
+  `geometry-change` preset). Change the `duration` numbers (seconds) to make them faster or slower.
+  Dragging or resizing a window with the mouse animates too, which can feel laggy: set `ANIMATIONS=0 ./install.sh`
+  or delete the `animations = (...)` block and restart picom to turn it all off.
 - **Translucent bars:** picom also makes the top bar (dwm) and bottom bar (polybar) see-through via
-  `opacity-rule` in `picom.conf`. Default 80%; change with `BAR_OPACITY=70 ./install.sh`, or edit the
+  `opacity-rule` in `picom.conf`. Default 75%; change with `BAR_OPACITY=70 ./install.sh`, or edit the
   numbers in `picom.conf` and restart picom. This fades the bar text slightly too.
 - The network-speed module watches Wi-Fi. For Ethernet change `interface-type` in the polybar config.
 - Tearing was not an issue on an Intel UHD (i3-N305) laptop. If you see it,
   run `picom --backend glx --vsync &` from `start-dwm`.
+
+## Releasing
+
+`./release.sh` commits everything, pushes, tags and publishes a GitHub release with a tarball attached.
+Releases are named by date and patch number (no version numbers yet): `2026-10-28-patch1`,
+`2026-10-28-patch2`, and the number restarts the next day.
+
+```
+./release.sh                      # notes written from the commits
+./release.sh "what changed"
+```
+
+One-time setup so it can create the release itself: `sudo pacman -S github-cli && gh auth login`.
+Without `gh` it still pushes and tags, then tells you how to finish the release on github.com.
+Keep `CHANGELOG.md` up to date when you add features.

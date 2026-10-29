@@ -42,4 +42,12 @@ elif grep -qF 'if (m->sel) {' "$F" && ! grep -qF "$OLD" "$F"; then
 	echo "patch-dwm: window title line not found (or already changed); skipping the cosmetic patch" >&2
 fi
 
+# --- 3. gaps, power button look (python; all non-fatal) -------------------
+if command -v python3 >/dev/null 2>&1; then
+	python3 "$(dirname "$(readlink -f "$0")")/patch-dwm.py" "$SRC" \
+		|| echo "patch-dwm: gaps/power-button patch reported a problem (see above)" >&2
+else
+	echo "patch-dwm: python3 not found; skipping gaps and power-button tweaks" >&2
+fi
+
 exit $rc
