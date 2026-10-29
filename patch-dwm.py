@@ -6,6 +6,8 @@
   2. power button: draws it in the normal bar colors (no accent-colored box).
   3. power icon:   shrinks the padded "  <icon>  " in config.h to just the icon.
   4. live key:     adds Super+Ctrl+Shift+W (dwm-live pick) to an existing config.h.
+  5. empty-workspace animation: view() starts the dwm-flash ripple when the
+             workspace you switch to has no windows.
 
 Every edit looks for exact text first and says so if it is not found; nothing is
 guessed. Files are backed up once as <file>.bak-le-dwm before the first change.
@@ -177,6 +179,46 @@ def patch_live_key():
     print("patch-dwm: added Super+Ctrl+Shift+W (live wallpaper picker) to config.h")
 
 
+FLASH_MARK = "/* le-dwm-config: empty-workspace flash */"
+
+FLASH_BLOCK = (
+    "\tarrange(selmon);\n"
+    "\t" + FLASH_MARK + "\n"
+    "\t{\n"
+    "\t\tClient *fc;\n"
+    "\t\tfor (fc = selmon->clients; fc && !ISVISIBLE(fc); fc = fc->next);\n"
+    "\t\tif (!fc) {   /* nothing on this workspace: play the ripple (dwm-flash) */\n"
+    "\t\t\tchar fx[16], fy[16], fw[16], fh[16];\n"
+    "\t\t\tsnprintf(fx, sizeof fx, \"%d\", selmon->wx);\n"
+    "\t\t\tsnprintf(fy, sizeof fy, \"%d\", selmon->wy);\n"
+    "\t\t\tsnprintf(fw, sizeof fw, \"%d\", selmon->ww);\n"
+    "\t\t\tsnprintf(fh, sizeof fh, \"%d\", selmon->wh);\n"
+    "\t\t\tArg fa = { .v = (const char *[]){ \"/bin/sh\", \"-c\",\n"
+    "\t\t\t\t\"exec \\\"$HOME/.local/bin/dwm-flash\\\" \\\"$@\\\" 2>/dev/null\", \"dwm-flash\",\n"
+    "\t\t\t\tfx, fy, fw, fh, colors[SchemeSel][ColBorder], NULL } };\n"
+    "\t\t\tspawn(&fa);\n"
+    "\t\t}\n"
+    "\t}\n"
+)
+
+
+def patch_flash():
+    """Play a ripple when view() lands on a workspace with no windows."""
+    src = read(DWMC)
+    if FLASH_MARK in src:
+        print("patch-dwm: empty-workspace animation already applied")
+        return
+    pat = re.compile(r"\nvoid\nview\(const Arg \*arg\)\n\{.*?\n\}\n", re.S)
+    m = pat.search(src)
+    if not m or m.group(0).count("\tarrange(selmon);\n") != 1 or "ColBorder" not in src:
+        print("patch-dwm: view() in dwm.c differs from what I expect; empty-workspace "
+              "animation not added", file=sys.stderr)
+        return
+    body = m.group(0).replace("\tarrange(selmon);\n", FLASH_BLOCK)
+    write(DWMC, src[:m.start()] + body + src[m.end():])
+    print("patch-dwm: empty-workspace animation added")
+
+
 if not os.path.isfile(DWMC):
     print("patch-dwm.py: %s not found" % DWMC, file=sys.stderr)
     sys.exit(1)
@@ -188,3 +230,4 @@ patch_gaps()
 patch_power_button()
 patch_power_text()
 patch_live_key()
+patch_flash()

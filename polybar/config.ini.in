@@ -36,7 +36,7 @@ type = internal/memory
 interval = 3
 format-prefix = " "
 format-prefix-foreground = ${colors.magenta}
-label = %percentage_used:2%%
+label = %gb_used%/%gb_total%
 
 [module/fs]
 type = internal/fs
@@ -45,7 +45,7 @@ mount-0 = /
 format-mounted = <label-mounted>
 format-mounted-prefix = " "
 format-mounted-prefix-foreground = ${colors.yellow}
-label-mounted = %percentage_used%%
+label-mounted = %used%/%total%
 label-unmounted = n/a
 
 [module/temp]

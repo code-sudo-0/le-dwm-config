@@ -21,7 +21,7 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 echo "==> Installing packages"
-sudo pacman -S --needed base-devel git libx11 libxft libxinerama \
+sudo pacman -S --needed base-devel git libx11 libxft libxinerama libxext \
 	xorg-server xorg-xinit xorg-xsetroot dmenu kitty firefox feh \
 	brightnessctl wireplumber networkmanager maim slop xclip thunar picom
 
@@ -66,6 +66,10 @@ install -m755 "$REPO_DIR/dwm-quit"     "$BIN/dwm-quit"
 install -m755 "$REPO_DIR/dwm-theme"    "$BIN/dwm-theme"
 install -m755 "$REPO_DIR/dwm-wall"     "$BIN/dwm-wall"
 install -m755 "$REPO_DIR/dwm-live"     "$BIN/dwm-live"
+install -m755 "$REPO_DIR/dwm-cpu"      "$BIN/dwm-cpu"
+# ripple played when you switch to an empty workspace (a failed build only loses the effect)
+gcc -O2 -o "$BIN/dwm-flash" "$REPO_DIR/dwm-flash.c" -lX11 -lXext \
+	|| warn "could not build dwm-flash: the empty-workspace animation will not play"
 command -v xwinwrap >/dev/null 2>&1 || warn "xwinwrap not found: live wallpapers need it (AUR: yay -S xwinwrap-git)"
 install -m755 "$REPO_DIR/dwm-palette"  "$BIN/dwm-palette"
 install -m755 "$REPO_DIR/start-dwm"    "$BIN/start-dwm"
@@ -125,18 +129,18 @@ animations = (
     triggers = [ "open", "show" ];
     preset = "appear";
     scale = 0.9;
-    duration = 0.2;
+    duration = 0.28;
   },
   {
     triggers = [ "close", "hide" ];
     preset = "disappear";
     scale = 0.9;
-    duration = 0.15;
+    duration = 0.22;
   },
   {
     triggers = [ "geometry" ];
     preset = "geometry-change";
-    duration = 0.2;
+    duration = 0.28;
   }
 );'
 	else

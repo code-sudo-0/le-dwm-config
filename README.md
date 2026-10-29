@@ -13,6 +13,7 @@ theme switching, a wallpaper manager, and a Thunar that matches everything else.
 | `polybar/config.ini.in` | bottom bar: CPU, RAM, disk, temp, uptime, network speed, buttons |
 | `dwm-theme` + `themes/` | theme switcher and palettes |
 | `dwm-wall` | wallpaper manager |
+| `dwm-cpu`, `dwm-flash.c` | bottom-bar CPU readout; empty-workspace ripple (built by the installer) |
 | `dwm-keys` | keybind cheat sheet (`Super+Shift+/`) |
 | `start-dwm` | session launcher |
 | `patch-dwm.sh` | small dwm patches: room for the bottom bar, plain window title |
@@ -69,7 +70,8 @@ Put pictures in `~/Pictures/wallpapers` and live wallpapers (videos) in `~/Video
   battery, clock. Prefer numbered tags? See the comment above `tags[]` in `config.h`.
   "Online" means NetworkManager reports a full connection.
 - **Bottom (polybar):** CPU, RAM, disk, temperature, uptime, network speed (Wi-Fi), plus
-  wallpaper and theme buttons.
+  wallpaper and theme buttons. Resources show used out of total instead of percentages: CPU as busy
+  threads out of all threads (`1.6/8`, from `dwm-cpu`), RAM as `4.2 GB/15.4 GB`, disk as `45 GB/229 GB`.
 
 Icons need a Nerd Font; the installer gets `ttf-jetbrains-mono-nerd`.
 
@@ -124,9 +126,15 @@ Existing files there are backed up once as `*.bak-dwm-theme`.
   undo with `gsettings reset org.blueman.general plugin-list`).
 - **Animations:** with picom 12+ (Arch ships 13) the installer adds an `animations` block to `picom.conf`:
   windows pop in/out when opened and closed, and tiled windows glide to their new spots (the experimental
-  `geometry-change` preset). Change the `duration` numbers (seconds) to make them faster or slower.
+  `geometry-change` preset). Durations are 0.28s open, 0.22s close, 0.28s move; change the `duration` numbers
+  (seconds) in `picom.conf` to make them faster or slower.
   Dragging or resizing a window with the mouse animates too, which can feel laggy: set `ANIMATIONS=0 ./install.sh`
   or delete the `animations = (...)` block and restart picom to turn it all off.
+- **Empty-workspace animation:** switching to a workspace with no windows plays a ripple: a ring in your
+  theme's accent color grows from the middle of the screen and fades out (`dwm-flash`, built by the installer
+  from `dwm-flash.c`; dwm starts it from `view()` via `patch-dwm.py`). With picom it is translucent.
+  Preview it with `dwm-flash 0 0 1366 740 '#88c0d0' 800`, or turn it off with
+  `touch ~/.config/dwm-theme/no-flash` (delete the file to bring it back).
 - **Translucent bars:** picom also makes the top bar (dwm) and bottom bar (polybar) see-through via
   `opacity-rule` in `picom.conf`. Default 75%; change with `BAR_OPACITY=70 ./install.sh`, or edit the
   numbers in `picom.conf` and restart picom. This fades the bar text slightly too.

@@ -19,3 +19,8 @@
 - `dwm-live`: live wallpaper manager (xwinwrap + mpv) with theme-from-video and login restore via `dwm-wall restore`.
 - `dwm-live`: key Super+Ctrl+Shift+W and a middle-click on the bottom bar's wallpaper button open the live-wallpaper picker.
 - Wallpaper picker (Super+Shift+W): centered rofi window with cached previews of pictures and live wallpapers; choosing applies it and recolors the theme.
+- Bottom bar shows resources as used/total (CPU threads `1.6/8`, RAM and disk in GB) instead of percentages.
+- Empty-workspace animation: a ripple (`dwm-flash`) plays when you switch to a workspace with no windows.
+  Opt out with `touch ~/.config/dwm-theme/no-flash`.
+- picom animations a little slower (open/move 0.28s, close 0.22s).
+- `dwm-theme` rebuilds dwm when `dwm.c` or `config.h` are newer than the installed binary, even if the colors did not change.

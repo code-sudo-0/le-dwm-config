@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# dwm-cpu - CPU load as "busy threads / total threads" (e.g. 1.6/8) for the polybar.
+# Prints one line every 2 seconds (polybar `tail = true`).
+n=$(nproc 2>/dev/null || echo 1)
+prev_total=0 prev_idle=0
+while true; do
+	read -r _ user nice system idle iowait irq softirq steal _ < /proc/stat
+	idle_all=$((idle + iowait))
+	total=$((user + nice + system + idle + iowait + irq + softirq + steal))
+	dt=$((total - prev_total)) di=$((idle_all - prev_idle))
+	prev_total=$total prev_idle=$idle_all
+	if ((dt > 0)); then
+		t=$((10 * n * (dt - di) / dt))      # tenths of a thread
+		printf '%d.%d/%d\n' $((t / 10)) $((t % 10)) "$n"
+	fi
+	sleep 2
+done
