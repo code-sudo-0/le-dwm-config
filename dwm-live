@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# dwm-live - live (video) wallpapers with xwinwrap + mpv
+#
+# Usage:
+#   dwm-live pick          choose a video from ~/Videos/Live wallpapers (dmenu list)
+#   dwm-live random        a random video from that folder
+#   dwm-live set <video>   use this video
+#   dwm-live restore       start the last live wallpaper again (dwm-wall restore does this at login)
+#   dwm-live off           stop it; the picture wallpaper shows again
+#   dwm-live status        print the running video, or "off"
+#
+# With `dwm-wall auto on`, every change here also recolors the whole setup from the video.
+# Needs: xwinwrap (AUR: xwinwrap-git) and mpv.
+# Videos live in ~/Videos/Live wallpapers (override with DWM_LIVE_DIR).
+set -o pipefail
+
+LIVE_DIR="${DWM_LIVE_DIR:-$HOME/Videos/Live wallpapers}"
+CONF="$HOME/.config/dwm-theme"
+STATE="$CONF/live-wallpaper"     # last chosen video; the file existing means "live wallpaper is on"
+PIDF="${XDG_RUNTIME_DIR:-/tmp}/dwm-live-$(id -u).pid"   # runtime dir: cleared at logout/reboot
+AUTO="$CONF/auto-theme"
+BIN="$HOME/.local/bin"
+mkdir -p "$CONF"
+
+msg() { echo "dwm-live: $*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a dwm-live "$*" 2>/dev/null; return 0; }
+
+list_videos() {
+	[[ -d $LIVE_DIR ]] || return 0
+	find -L "$LIVE_DIR" -maxdepth 2 -type f \
+		\( -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.m4v' -o -iname '*.gif' \) \
+		2>/dev/null | sort
+}
+
+# Prints the player's pid only if it is really a running xwinwrap (guards against a stale or reused pid).
+player_pid() {
+	local pid st
+	pid=$(cat "$PIDF" 2>/dev/null)
+	[[ $pid =~ ^[0-9]+$ ]] || return 1
+	[[ $(ps -o comm= -p "$pid" 2>/dev/null) == xwinwrap ]] || return 1
+	st=$(ps -o stat= -p "$pid" 2>/dev/null)
+	[[ $st != Z* ]] || return 1
+	echo "$pid"
+}
+
+stop_player() {
+	local pid
+	pid=$(player_pid) && kill -- "-$pid" 2>/dev/null
+	rm -f "$PIDF"
+	# anything started by hand with the same recipe goes too
+	pkill -u "$(id -u)" -x xwinwrap 2>/dev/null
+	pkill -u "$(id -u)" -f '^mpv --wid=' 2>/dev/null   # anchored: only the player itself
+	return 0
+}
+
+start_player() {
+	local f=$1
+	command -v xwinwrap >/dev/null 2>&1 || { msg "xwinwrap is not installed (AUR: xwinwrap-git)"; return 1; }
+	command -v mpv >/dev/null 2>&1 || { msg "mpv is not installed (sudo pacman -S mpv)"; return 1; }
+	[[ -f $f ]] || { msg "not a file: $f"; return 1; }
+	stop_player
+	# same flags as the hand-written command; setsid gives it its own process group so `off` can stop both
+	setsid xwinwrap -ov -fs -ni -s -st -sp -b -nf -- mpv \
+		--wid=%WID \
+		--loop-file=inf \
+		--no-audio \
+		--no-osc \
+		--no-osd-bar \
+		--panscan=1.0 \
+		"$f" >/dev/null 2>&1 &
+	echo $! > "$PIDF"
+	printf '%s\n' "$f" > "$STATE"
+}
+
+# recolor everything from the video when auto theme is on
+auto_theme() {
+	[[ -f $AUTO || ${DWM_FORCE_THEME:-0} == 1 ]] || return 0
+	if [[ -x $BIN/dwm-theme ]]; then "$BIN/dwm-theme" from-image "$1" >/dev/null 2>&1
+	elif command -v dwm-theme >/dev/null 2>&1; then dwm-theme from-image "$1" >/dev/null 2>&1
+	fi
+}
+
+set_live() {
+	start_player "$1" || return 1
+	auto_theme "$1"
+}
+
+random_live() {
+	local cur pick
+	cur=$(cat "$STATE" 2>/dev/null)
+	pick=$(list_videos | grep -vxF "$cur" | shuf -n1)
+	[[ -n $pick ]] || pick=$(list_videos | shuf -n1)
+	[[ -n $pick ]] || { msg "no videos in $LIVE_DIR"; return 1; }
+	set_live "$pick"
+}
+
+pick() {
+	local list choice
+	list=$(list_videos)
+	[[ -n $list ]] || { msg "no videos in $LIVE_DIR - drop some there"; return 1; }
+	local BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+	# shellcheck source=/dev/null
+	[[ -r $CONF/current.sh ]] && . "$CONF/current.sh"
+	choice=$(printf '%s\n' "$list" \
+		| awk -v p="$LIVE_DIR/" 'index($0, p) == 1 { print substr($0, length(p) + 1); next } { print }' \
+		| dmenu -i -l 15 -p "live wallpaper" -fn "JetBrainsMono Nerd Font:size=11" \
+			-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG")
+	[[ -n $choice ]] || return 0
+	[[ -f $choice ]] || choice="$LIVE_DIR/$choice"
+	set_live "$choice"
+}
+
+restore() {
+	local f
+	f=$(cat "$STATE" 2>/dev/null)
+	[[ -n $f && -f $f ]] || return 0
+	start_player "$f"
+}
+
+status() {
+	local f
+	f=$(cat "$STATE" 2>/dev/null)
+	if [[ -n $f ]] && player_pid >/dev/null; then
+		echo "$f"
+	else
+		echo off
+	fi
+}
+
+case ${1:-pick} in
+	pick) pick ;;
+	random) random_live ;;
+	restore) restore ;;
+	set)
+		[[ -n ${2:-} ]] || { echo "usage: dwm-live set <video>" >&2; exit 1; }
+		set_live "$2"
+		;;
+	off|stop)
+		stop_player
+		rm -f "$STATE"
+		msg "live wallpaper off"
+		;;
+	status) status ;;
+	*)
+		sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+		exit 1
+		;;
+esac

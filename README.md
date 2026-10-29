@@ -49,9 +49,14 @@ Your programs stay open, but they all reappear on the tag you are viewing. Every
 
 ## Wallpapers
 
-Put images in `~/Pictures/wallpapers`.
+Put pictures in `~/Pictures/wallpapers` and live wallpapers (videos) in `~/Videos/Live wallpapers`.
 
-- `Super+Shift+W`: thumbnail grid. Move to a picture, press `m` to mark it, then `q`.
+- `Super+Shift+W`: a window in the middle of the screen with a preview grid of **both** your pictures and
+  your live wallpapers (live ones are labeled "(live)"). Type to search, arrows to move, Enter to apply.
+  Choosing one sets it and recolors the whole theme from it. Previews are made once and cached in
+  `~/.cache/dwm-wall/thumbs`. The window uses your active theme's colors. Needs `rofi` (installed by
+  `install.sh`); without it you get the old nsxiv/dmenu picker. `DWM_PICK_THEME=0` keeps the current theme
+  when you choose, and `DWM_WALL_UI=nsxiv` (or `dmenu`) forces the simple picker.
 - `Super+Ctrl+W`: random wallpaper
 - Bottom bar: click the picture icon (right-click for random)
 - The last wallpaper is restored at login. CLI: `dwm-wall set <file>`, `dwm-wall random`.
@@ -147,9 +152,27 @@ also shows up in the theme picker. Needs `python-pillow` (and `ffmpeg` for video
 - Changing the theme rebuilds and restarts dwm (about a second), so auto mode does that on every wallpaper
   change. If the new colors are identical to the current ones nothing is rebuilt.
 - Logging in never re-themes: `dwm-wall restore` only puts the wallpaper back.
-- **Live wallpapers:** colors are sampled once, from five frames spread across the video, not continuously
-  (continuous recoloring would rebuild dwm over and over). Add one line to the script that starts your live
-  wallpaper, e.g. `dwm-theme from-image ~/Videos/live.mp4`, so the theme matches whenever it changes.
+- **Live wallpapers:** see below. The theme is sampled once from five frames spread across the video, not
+  continuously (continuous recoloring would rebuild dwm over and over).
+
+## Live wallpapers
+
+`dwm-live` runs a video behind your windows with `xwinwrap` + `mpv` (the same flags as the usual one-liner) and
+remembers the choice. Put videos in `~/Videos/Live wallpapers`.
+
+```
+dwm-live pick                 # choose from that folder (dmenu)
+dwm-live random
+dwm-live set "$HOME/Videos/Live wallpapers/Minecraft.mp4"
+dwm-live off                  # back to the picture wallpaper
+dwm-live status
+```
+
+With `dwm-wall auto on`, each change also recolors the whole setup from the video. Choosing a picture with
+`dwm-wall` turns the live wallpaper off, and `dwm-wall restore` (run at login) starts the last live one again, so
+you do not need your own xwinwrap line in any startup script. Needs `mpv` (installed by `install.sh`) and
+`xwinwrap` from the AUR (`yay -S xwinwrap-git`). Open the picker with `Super+Ctrl+Shift+W` (added to your existing `config.h` by `patch-dwm.sh`, which
+`install.sh` runs) or by middle-clicking the picture in the bottom bar.
 
 ## Releasing
 

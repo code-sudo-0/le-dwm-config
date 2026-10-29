@@ -1,7 +1,7 @@
 ; polybar bottom bar. install.sh copies this to ~/.config/polybar/config.ini
 ; (replacing @HOME@). Colors come from colors.ini, which dwm-theme generates.
 ; Click the brush to pick a theme, the picture to pick a wallpaper
-; (right-click the picture for a random one).
+; (right-click the picture for a random one, middle-click for live wallpapers).
 include-file = @HOME@/.config/polybar/colors.ini
 
 [bar/bottom]
@@ -85,6 +85,7 @@ content = " wallpaper"
 content-foreground = ${colors.fg-dim}
 click-left = @HOME@/.local/bin/dwm-wall pick
 click-right = @HOME@/.local/bin/dwm-wall random
+click-middle = @HOME@/.local/bin/dwm-live pick
 
 [module/theme]
 type = custom/script

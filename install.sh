@@ -29,7 +29,7 @@ sudo pacman -S --needed base-devel git libx11 libxft libxinerama \
 echo "==> Installing optional packages (bars, fonts, icons, Thunar extras)"
 for pkg in polybar nsxiv ttf-jetbrains-mono-nerd papirus-icon-theme adwaita-icon-theme \
 	thunar-archive-plugin thunar-volman file-roller gvfs tumbler ffmpegthumbnailer \
-	noto-fonts xorg-xrdb python-pillow ffmpeg; do
+	noto-fonts xorg-xrdb python-pillow ffmpeg mpv rofi; do
 	sudo pacman -S --needed --noconfirm "$pkg" || warn "could not install $pkg (skipping)"
 done
 
@@ -65,6 +65,8 @@ install -m755 "$REPO_DIR/dwm-keys"     "$BIN/dwm-keys"
 install -m755 "$REPO_DIR/dwm-quit"     "$BIN/dwm-quit"
 install -m755 "$REPO_DIR/dwm-theme"    "$BIN/dwm-theme"
 install -m755 "$REPO_DIR/dwm-wall"     "$BIN/dwm-wall"
+install -m755 "$REPO_DIR/dwm-live"     "$BIN/dwm-live"
+command -v xwinwrap >/dev/null 2>&1 || warn "xwinwrap not found: live wallpapers need it (AUR: yay -S xwinwrap-git)"
 install -m755 "$REPO_DIR/dwm-palette"  "$BIN/dwm-palette"
 install -m755 "$REPO_DIR/start-dwm"    "$BIN/start-dwm"
 [[ -f $REPO_DIR/dwm-power-menu ]] && install -m755 "$REPO_DIR/dwm-power-menu" "$BIN/dwm-power-menu"
@@ -167,4 +169,4 @@ printf '%s\n' "exec $BIN/start-dwm" > "$HOME/.xinitrc"
 mkdir -p "$HOME/Pictures"
 echo
 echo "Done. Log out and choose the 'dwm' session, or run 'startx' from a TTY."
-echo "Put wallpapers in $WALL_DIR, then use Super+Shift+W. Themes: Super+Shift+T."
+echo "Put wallpapers in $WALL_DIR, then use Super+Shift+W (pictures and live wallpapers). Themes: Super+Shift+T."

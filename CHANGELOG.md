@@ -16,3 +16,6 @@
   Catppuccin Frappe/Macchiato, Gruvbox Light.
 - Theme from wallpaper: `dwm-theme from-image` (images and videos), `dwm-wall auto on|off`; unchanged colors
   no longer trigger a dwm rebuild.
+- `dwm-live`: live wallpaper manager (xwinwrap + mpv) with theme-from-video and login restore via `dwm-wall restore`.
+- `dwm-live`: key Super+Ctrl+Shift+W and a middle-click on the bottom bar's wallpaper button open the live-wallpaper picker.
+- Wallpaper picker (Super+Shift+W): centered rofi window with cached previews of pictures and live wallpapers; choosing applies it and recolors the theme.

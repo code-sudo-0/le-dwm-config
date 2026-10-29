@@ -2,22 +2,28 @@
 # dwm-wall - wallpaper manager
 #
 # Usage:
-#   dwm-wall pick        thumbnail grid (nsxiv): press m on a picture, then q
-#                        (falls back to a dmenu list if nsxiv is not installed)
+#   dwm-wall pick        centered grid with previews of your pictures AND live wallpapers (rofi);
+#                        choosing one applies it and recolors the whole theme.
+#                        Without rofi: nsxiv thumbnails (press m on a picture, then q), or a dmenu list.
 #   dwm-wall random      switch to a random wallpaper
 #   dwm-wall set <file>  use a specific image
 #   dwm-wall restore     re-apply the last wallpaper (run at login)
 #   dwm-wall auto on|off|status   make the whole theme follow the wallpaper
 #                        (on = every set/random/pick also runs: dwm-theme from-image <wallpaper>)
 #
-# Wallpapers live in ~/Pictures/wallpapers (override with DWM_WALL_DIR).
+# Wallpapers live in ~/Pictures/wallpapers (override with DWM_WALL_DIR); live wallpapers
+# (videos) in ~/Videos/Live wallpapers (DWM_LIVE_DIR). Picker options: DWM_PICK_THEME=0 keeps the
+# theme when you choose; DWM_WALL_UI=nsxiv|dmenu forces the simple picker.
 set -o pipefail
 
 WALL_DIR="${DWM_WALL_DIR:-$HOME/Pictures/wallpapers}"
+LIVE_DIR="${DWM_LIVE_DIR:-$HOME/Videos/Live wallpapers}"
+THUMBS="${XDG_CACHE_HOME:-$HOME/.cache}/dwm-wall/thumbs"
 CONF="$HOME/.config/dwm-theme"
 STATE="$CONF/wallpaper"
 AUTO="$CONF/auto-theme"          # exists = theme follows the wallpaper
 BIN="$HOME/.local/bin"
+LIVE="$CONF/live-wallpaper"      # exists = a live (video) wallpaper is on; holds its path
 mkdir -p "$CONF" "$WALL_DIR"
 
 msg() { echo "dwm-wall: $*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a dwm-wall "$*" 2>/dev/null; return 0; }
@@ -38,13 +44,17 @@ set_wall() {
 # When auto theme is on, recolor everything from the wallpaper that was just set.
 # (Not used by `restore`, so logging in never triggers a rebuild.)
 auto_theme() {
-	[[ -f $AUTO ]] || return 0
+	[[ -f $AUTO || ${DWM_FORCE_THEME:-0} == 1 ]] || return 0
 	if [[ -x $BIN/dwm-theme ]]; then "$BIN/dwm-theme" from-image "$1" >/dev/null 2>&1
 	elif command -v dwm-theme >/dev/null 2>&1; then dwm-theme from-image "$1" >/dev/null 2>&1
 	fi
 }
 
-themed_set() { set_wall "$1" && auto_theme "$1"; }
+themed_set() {
+	# choosing a picture means leaving the live wallpaper (see dwm-live)
+	[[ -f $CONF/live-wallpaper && -x $BIN/dwm-live ]] && "$BIN/dwm-live" off >/dev/null 2>&1
+	set_wall "$1" && auto_theme "$1"
+}
 
 random_wall() {
 	local cur pick
@@ -69,9 +79,181 @@ restore() {
 		[[ -r $CONF/current.sh ]] && . "$CONF/current.sh"
 		xsetroot -solid "$BG" 2>/dev/null
 	fi
+	# if the last choice was a live wallpaper, start it again on top of the picture
+	if [[ -f $CONF/live-wallpaper && -x $BIN/dwm-live ]]; then "$BIN/dwm-live" restore; fi
+}
+
+list_live() {
+	[[ -d $LIVE_DIR ]] || return 0
+	find -L "$LIVE_DIR" -maxdepth 2 -type f \
+		\( -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.gif' \) \
+		2>/dev/null | sort
+}
+
+# Make a 320px-wide preview of image or video $1 at $2 (videos: a frame ~30% in).
+make_thumb() {
+	local src=$1 out=$2 t=1 dur
+	command -v ffmpeg >/dev/null 2>&1 || return 1
+	case ${src,,} in
+		*.mp4|*.mkv|*.webm|*.mov|*.gif)
+			dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$src" 2>/dev/null | head -n1)
+			[[ $dur =~ ^[0-9]+(\.[0-9]+)?$ ]] && t=$(awk -v d="$dur" 'BEGIN { printf "%.2f", d * 0.3 }')
+			ffmpeg -v error -y -ss "$t" -i "$src" -frames:v 1 -vf scale=320:-2 "$out" 2>/dev/null ;;
+		*)
+			ffmpeg -v error -y -i "$src" -frames:v 1 -vf scale=320:-2 "$out" 2>/dev/null ;;
+	esac
+	[[ -s $out ]] || { rm -f "$out"; return 1; }
+}
+
+# Print the cached preview path for $1 (made on first use; the source itself if that fails).
+thumb_path() {
+	local src=$1 key
+	key=$(printf '%s' "$src" | md5sum | cut -d' ' -f1)-$(stat -c %Y "$src" 2>/dev/null)
+	printf '%s/%s.jpg' "$THUMBS" "$key"
+}
+
+# Write the rofi theme for the active palette: a centered window with a 3-column preview grid.
+write_rasi() {
+	local BG="#2e3440" BG_ALT="#3b4252" FG="#d8dee9" FG_DIM="#8a94a8" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+	# shellcheck source=/dev/null
+	[[ -r $CONF/current.sh ]] && . "$CONF/current.sh"
+	local winbg=$BG
+	# a little see-through like the bars, but only when a compositor is running
+	pgrep -x picom >/dev/null 2>&1 && winbg="${BG}f2"
+	cat > "$CONF/wall.rasi" <<RASI
+* {
+    bg: $winbg;
+    bgsolid: $BG;
+    bgalt: $BG_ALT;
+    fg: $FG;
+    fgdim: $FG_DIM;
+    accent: $ACCENT;
+    accentfg: $ACCENT_FG;
+    font: "JetBrainsMono Nerd Font 11";
+    background-color: transparent;
+    text-color: @fg;
+}
+window {
+    location: center;
+    anchor: center;
+    width: 820px;
+    padding: 18px;
+    border: 2px;
+    border-radius: 14px;
+    border-color: @accent;
+    background-color: @bg;
+}
+mainbox {
+    spacing: 14px;
+    children: [ inputbar, listview ];
+}
+inputbar {
+    spacing: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background-color: @bgalt;
+    children: [ prompt, entry ];
+}
+prompt {
+    text-color: @accent;
+}
+entry {
+    placeholder: "search wallpapers";
+    placeholder-color: @fgdim;
+}
+listview {
+    columns: 3;
+    lines: 3;
+    spacing: 12px;
+    fixed-columns: true;
+    scrollbar: false;
+}
+element {
+    orientation: vertical;
+    padding: 10px;
+    spacing: 8px;
+    border-radius: 10px;
+    children: [ element-icon, element-text ];
+}
+element-icon {
+    size: 200px;
+    horizontal-align: 0.5;
+}
+element-text {
+    horizontal-align: 0.5;
+    text-color: inherit;
+}
+element selected.normal {
+    background-color: @accent;
+    text-color: @accentfg;
+}
+RASI
+}
+
+# One window with previews of every picture and live wallpaper. Choosing applies it and
+# (unless DWM_PICK_THEME=0) recolors the theme from it.
+pick_rofi() {
+	local -a paths=() kinds=() labels=() thumbs=() missing=()
+	local f name t i cur sel idx n=0
+	cur=$(cat "$LIVE" 2>/dev/null); [[ -f $cur ]] || cur=$(cat "$STATE" 2>/dev/null)
+
+	while IFS= read -r f; do [[ -n $f ]] && { paths+=("$f"); kinds+=(static); }; done < <(list_walls)
+	while IFS= read -r f; do [[ -n $f ]] && { paths+=("$f"); kinds+=(live); }; done < <(list_live)
+	if ((${#paths[@]} == 0)); then
+		msg "nothing to pick: add pictures to $WALL_DIR or videos to $LIVE_DIR"
+		return 1
+	fi
+
+	mkdir -p "$THUMBS"
+	sel=0
+	for i in "${!paths[@]}"; do
+		f=${paths[$i]}
+		name=$(basename "$f"); name=${name%.*}
+		[[ ${kinds[$i]} == live ]] && name="$name  (live)"
+		labels+=("$name")
+		t=$(thumb_path "$f")
+		thumbs+=("$t")
+		[[ -s $t ]] || missing+=("$i")
+		[[ $f == "$cur" ]] && sel=$i
+	done
+
+	# previews are made once and cached; do the missing ones four at a time
+	for i in "${missing[@]}"; do
+		make_thumb "${paths[$i]}" "${thumbs[$i]}" &
+		((++n % 4 == 0)) && wait
+	done
+	wait
+
+	write_rasi
+	idx=$(
+		for i in "${!paths[@]}"; do
+			t=${thumbs[$i]}
+			[[ -s $t ]] || t=${paths[$i]}   # preview failed: let rofi load the file itself
+			[[ ${kinds[$i]} == live && ! -s ${thumbs[$i]} ]] && t=video-x-generic
+			printf '%s\0icon\x1f%s\n' "${labels[$i]}" "$t"
+		done | rofi -dmenu -i -show-icons -no-custom -format i -p "wallpaper" \
+			-selected-row "$sel" -theme "$CONF/wall.rasi"
+	)
+	[[ $idx =~ ^[0-9]+$ ]] || return 0
+	[[ -n ${paths[$idx]:-} ]] || return 0
+
+	export DWM_FORCE_THEME=${DWM_PICK_THEME:-1}
+	if [[ ${kinds[$idx]} == live ]]; then
+		"$BIN/dwm-live" set "${paths[$idx]}"
+	else
+		themed_set "${paths[$idx]}"
+	fi
 }
 
 pick() {
+	if [[ ${DWM_WALL_UI:-auto} == auto ]] && command -v rofi >/dev/null 2>&1; then
+		pick_rofi
+	else
+		pick_basic
+	fi
+}
+
+pick_basic() {
 	local choice
 	if [[ -z $(list_walls | head -n1) ]]; then
 		msg "no images in $WALL_DIR - drop some pictures there"
@@ -103,7 +285,8 @@ case ${1:-pick} in
 			on)
 				touch "$AUTO"
 				msg "theme now follows the wallpaper"
-				cur=$(cat "$STATE" 2>/dev/null)
+				cur=$(cat "$CONF/live-wallpaper" 2>/dev/null)   # a live wallpaper wins over the picture
+				[[ -f $cur ]] || cur=$(cat "$STATE" 2>/dev/null)
 				[[ -f $cur ]] && auto_theme "$cur"
 				;;
 			off) rm -f "$AUTO"; msg "theme no longer follows the wallpaper" ;;

@@ -5,6 +5,7 @@
              config.h defines `gappx` (8 px around and between tiled windows).
   2. power button: draws it in the normal bar colors (no accent-colored box).
   3. power icon:   shrinks the padded "  <icon>  " in config.h to just the icon.
+  4. live key:     adds Super+Ctrl+Shift+W (dwm-live pick) to an existing config.h.
 
 Every edit looks for exact text first and says so if it is not found; nothing is
 guessed. Files are backed up once as <file>.bak-le-dwm before the first change.
@@ -160,6 +161,22 @@ def patch_power_text():
         print("patch-dwm: power icon padding removed in config.h")
 
 
+def patch_live_key():
+    cfg = read(CONFH)
+    if "dwm-live" in cfg:
+        return
+    pat = re.compile(r'^\t\{ MODKEY\|ControlMask,\s+XK_w,\s+spawn,\s+SHCMD\("\$HOME/\.local/bin/dwm-wall random"\) \},\n', re.M)
+    m = pat.search(cfg)
+    if not m:
+        print("patch-dwm: wallpaper keys not found in config.h; live-wallpaper key not added "
+              "(add { MODKEY|ControlMask|ShiftMask, XK_w, spawn, SHCMD(\"$HOME/.local/bin/dwm-live pick\") }, yourself)",
+              file=sys.stderr)
+        return
+    line = '\t{ MODKEY|ControlMask|ShiftMask, XK_w,      spawn,          SHCMD("$HOME/.local/bin/dwm-live pick") },\n'
+    write(CONFH, cfg[:m.end()] + line + cfg[m.end():])
+    print("patch-dwm: added Super+Ctrl+Shift+W (live wallpaper picker) to config.h")
+
+
 if not os.path.isfile(DWMC):
     print("patch-dwm.py: %s not found" % DWMC, file=sys.stderr)
     sys.exit(1)
@@ -170,3 +187,4 @@ if not os.path.isfile(CONFH):
 patch_gaps()
 patch_power_button()
 patch_power_text()
+patch_live_key()
