@@ -40,7 +40,7 @@
 - Installer adds `network-manager-applet`, `blueman`, `pavucontrol`, `power-profiles-daemon` and `libnotify`,
   and enables the power-profiles service.
 - Top bar is floating together with the bottom bar by default, with the tiled windows kept 8 px clear of both.
-- Fixed Super+Shift+B (bar style menu) not being added to `config.h`: the patcher mistook `dwm-bar` in
-  the generated `barcfg.h` comment for the key binding. The binding is now in `config.h` and the check
-  looks for the actual `dwm-bar pick` command.
+- Super+P now runs `dwm-dock`: with the dock off (default) it opens the regular menu (dmenu_run); with the
+  dock on (`dwm-bar set DOCK=1` or Super+Shift+B -> Dock) it opens an application dock (rofi drun,
+  with a dmenu fallback). Toggle with Super+Shift+B.
 

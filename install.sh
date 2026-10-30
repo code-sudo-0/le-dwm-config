@@ -114,6 +114,7 @@ install_scripts() {
 	install -m755 "$REPO_DIR/dwm-bar"         "$BIN/dwm-bar"       || return 1
 	install -m755 "$REPO_DIR/dwm-statusclick" "$BIN/dwm-statusclick" || return 1
 	install -m755 "$REPO_DIR/dwm-perf"        "$BIN/dwm-perf"      || return 1
+	install -m755 "$REPO_DIR/dwm-dock"        "$BIN/dwm-dock"      || return 1
 	# ripple played when you switch to an empty workspace (a failed build only loses the effect)
 	gcc -O2 -o "$BIN/dwm-flash" "$REPO_DIR/dwm-flash.c" -lX11 -lXext \
 		|| warn "could not build dwm-flash: the empty-workspace animation will not play"

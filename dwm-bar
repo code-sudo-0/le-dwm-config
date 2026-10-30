@@ -65,7 +65,7 @@ LAYOUT_LABELS = {
 DEFAULTS = {
     "LAYOUT": "split", "FLOAT": "1", "GAP": "8", "RADIUS": "8",
     "WIDTH": "full", "DENSITY": "normal", "ICONS": "nerd", "TAGS": "config",
-    "CAT": "1", "RES": "auto", "BAR_OPACITY": "75", "ANIMATIONS": "1",
+    "CAT": "1", "RES": "auto", "BAR_OPACITY": "75", "ANIMATIONS": "1", "DOCK": "0",
 }
 
 OPTIONS = {   # key: (menu title, [(value, label)])
@@ -84,8 +84,10 @@ OPTIONS = {   # key: (menu title, [(value, label)])
     "CAT": ("Running cat", [("1", "On"), ("0", "Off")]),
     "RES": ("CPU/RAM/disk in the top bar", [("auto", "Only when there is no second bar"),
                                             ("1", "Always"), ("0", "Never")]),
+    "DOCK": ("Dock (Super+P)", [("0", "Off: Super+P runs dmenu (regular menu)"),
+                                ("1", "On: Super+P opens the dock (apps + launcher)")]),
 }
-MENU_ORDER = ["LAYOUT", "FLOAT", "GAP", "RADIUS", "WIDTH", "DENSITY", "ICONS", "TAGS", "CAT", "RES"]
+MENU_ORDER = ["LAYOUT", "FLOAT", "GAP", "RADIUS", "WIDTH", "DENSITY", "ICONS", "TAGS", "CAT", "RES", "DOCK"]
 
 PRESETS = {
     "default":  ("Two floating bars, rounded windows",

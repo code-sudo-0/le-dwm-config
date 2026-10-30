@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# dwm-dock - what Super+P does.
+#
+#   dock inactive (DOCK=0 in bar.conf): runs dmenu_run, the regular menu.
+#   dock active   (DOCK=1): opens a dock of installed applications with a
+#                           launcher (rofi drun; falls back to a dmenu list).
+#
+# The active state is toggled with `dwm-bar` (Super+Shift+B -> Dock) or
+# `dwm-bar set DOCK=1`. Super+P always calls this script, so the binding in
+# dwm's config.h never has to change.
+set -u
+
+CONF="${HOME}/.config/dwm-theme/bar.conf"
+dock=0
+if [[ -r $CONF ]]; then
+	dock=$(sed -n 's/^DOCK=//p' "$CONF" | head -1)
+fi
+dock="${dock:-0}"
+
+if [[ $dock != 1 ]]; then
+	# regular menu
+	if command -v dmenu_run >/dev/null 2>&1; then
+		exec dmenu_run
+	elif command -v rofi >/dev/null 2>&1; then
+		exec rofi -show run
+	else
+		command -v notify-send >/dev/null 2>&1 && notify-send -a dwm "No menu found" "Install dmenu or rofi."
+		exit 1
+	fi
+fi
+
+# dock active: applications + launcher
+if command -v rofi >/dev/null 2>&1; then
+	exec rofi -show drun -show-icons
+fi
+
+# fallback without rofi: a dmenu listing the .desktop app names + "Launcher"
+apps=$(
+	for f in /usr/share/applications/*.desktop "$HOME/.local/share/applications"/*.desktop; do
+		[[ -r $f ]] || continue
+		name=$(sed -n 's/^Name=//p' "$f" | head -1)
+		exec_line=$(sed -n 's/^Exec=//p' "$f" | head -1)
+		[[ -n $name && -n $exec_line ]] || continue
+		printf '%s\t%s\n' "$name" "$exec_line"
+	done | sort -u
+)
+choice=$(printf '%s\n' "$(printf '%s\n' "$apps" | cut -f1)" "Launcher (dmenu_run)" | dmenu -i -p 'Dock') || exit 0
+if [[ $choice == "Launcher (dmenu_run)" ]]; then
+	exec dmenu_run
+fi
+exec_line=$(printf '%s\n' "$apps" | awk -F'\t' -v c="$choice" '$1==c{print $2; exit}')
+[[ -n $exec_line ]] || exit 0
+exec_line=${exec_line//%[a-zA-Z]/}
+setsid sh -c "$exec_line" >/dev/null 2>&1 &

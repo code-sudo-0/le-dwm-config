@@ -10,7 +10,7 @@ cat <<'EOF' | dmenu -l 45 -i -p "dwm keys" -fn "JetBrainsMono Nerd Font:size=11"
 	-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" >/dev/null
 LAUNCH
   Super+Enter            terminal
-  Super+P                app launcher (dmenu)
+  Super+P                app launcher (dmenu), or the dock when the dock is on (Super+Shift+B -> Dock)
   Super+W                Firefox
   Super+E                Thunar file manager
   Super+Shift+/          this cheat sheet

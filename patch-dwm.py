@@ -267,6 +267,19 @@ def patch_bar_key():
     print("patch-dwm: added Super+Shift+B (bar style menu) to config.h")
 
 
+def patch_dock_key():
+    cfg = read(CONFH)
+    if "dwm-dock" in cfg:
+        return
+    old = '\t{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },\n'
+    if old not in cfg:
+        print("patch-dwm: Super+P binding not found; dwm-dock key not added", file=sys.stderr)
+        return
+    new = '\t{ MODKEY,                       XK_p,      spawn,          SHCMD("$HOME/.local/bin/dwm-dock") },\n'
+    write(CONFH, cfg.replace(old, new, 1))
+    print("patch-dwm: Super+P now runs dwm-dock (dock or regular menu)")
+
+
 def patch_power_button():
     src = read(DWMC)
     old = ("/* Clickable power button on the native dwm bar. */\n"
@@ -522,6 +535,7 @@ patch_power_button()
 patch_power_text()
 patch_live_key()
 patch_bar_key()
+patch_dock_key()
 patch_flash()
 patch_status_click()
 if bars_ok:
