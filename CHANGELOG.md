@@ -40,4 +40,7 @@
 - Installer adds `network-manager-applet`, `blueman`, `pavucontrol`, `power-profiles-daemon` and `libnotify`,
   and enables the power-profiles service.
 - Top bar is floating together with the bottom bar by default, with the tiled windows kept 8 px clear of both.
+- Fixed Super+Shift+B (bar style menu) not being added to `config.h`: the patcher mistook `dwm-bar` in
+  the generated `barcfg.h` comment for the key binding. The binding is now in `config.h` and the check
+  looks for the actual `dwm-bar pick` command.
 

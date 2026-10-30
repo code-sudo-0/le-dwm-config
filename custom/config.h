@@ -120,6 +120,7 @@ static const Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_slash,  spawn,          SHCMD("$HOME/.local/bin/dwm-keys") },
 	{ MODKEY|ShiftMask,             XK_s,      spawn,          {.v = shot_region_clip } },
 	{ MODKEY|ShiftMask,             XK_t,      spawn,          SHCMD("$HOME/.local/bin/dwm-theme pick") },
+	{ MODKEY|ShiftMask,             XK_b,      spawn,          SHCMD("$HOME/.local/bin/dwm-bar pick") },
 	{ MODKEY|ShiftMask,             XK_w,      spawn,          SHCMD("$HOME/.local/bin/dwm-wall pick") },
 	{ MODKEY|ControlMask,           XK_w,      spawn,          SHCMD("$HOME/.local/bin/dwm-wall random") },
 	{ MODKEY|ControlMask|ShiftMask, XK_w,      spawn,          SHCMD("$HOME/.local/bin/dwm-live pick") },

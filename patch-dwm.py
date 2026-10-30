@@ -251,7 +251,9 @@ def patch_tags_and_gap():
 
 def patch_bar_key():
     cfg = read(CONFH)
-    if "dwm-bar" in cfg:
+    # note: "dwm-bar" also appears in the barcfg.h comment added by the bar
+    # layout patch, so look for the actual binding instead
+    if "dwm-bar pick" in cfg:
         return
     pat = re.compile(r'^\t\{ MODKEY\|ShiftMask,\s+XK_t,\s+spawn,\s+SHCMD\("\$HOME/\.local/bin/dwm-theme pick"\) \},\n', re.M)
     m = pat.search(cfg)
