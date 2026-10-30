@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# dwm-perf - pick a power profile: Performance, Balanced or Power Saver.
+# Opened by clicking the battery item in dwm's top bar.
+# Needs power-profiles-daemon (powerprofilesctl).
+set -u
+
+BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+# shellcheck source=/dev/null
+[[ -r $HOME/.config/dwm-theme/current.sh ]] && . "$HOME/.config/dwm-theme/current.sh"
+
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a dwm "$@"; return 0; }
+
+if ! command -v powerprofilesctl >/dev/null 2>&1; then
+	notify "Performance profiles unavailable" "Install power-profiles-daemon (sudo pacman -S power-profiles-daemon)."
+	exit 1
+fi
+
+cur=$(powerprofilesctl get 2>/dev/null | tr -d '[:space:]')
+mark() { [[ $1 == "$cur" ]] && printf '* ' || printf '  '; }
+
+entries=$(
+	printf '%s\n' \
+		"$(mark performance)Performance  - fastest, uses more power" \
+		"$(mark balanced)Balanced     - the default" \
+		"$(mark power-saver)Power Saver  - longest battery life"
+)
+
+if command -v dmenu >/dev/null 2>&1; then
+	choice=$(printf '%s\n' "$entries" | dmenu -i -p "performance (now: ${cur:-?})" \
+		-fn "JetBrainsMono Nerd Font:size=11" \
+		-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG") || exit 0
+elif command -v rofi >/dev/null 2>&1; then
+	choice=$(printf '%s\n' "$entries" | rofi -dmenu -i -p "performance (now: ${cur:-?})") || exit 0
+else
+	notify "Performance menu unavailable" "Install dmenu or rofi."
+	exit 1
+fi
+
+case $choice in
+	*Performance*) profile=performance; label="Performance" ;;
+	*Balanced*)    profile=balanced;    label="Balanced" ;;
+	*'Power Saver'*) profile=power-saver; label="Power Saver" ;;
+	*) exit 0 ;;
+esac
+
+if powerprofilesctl set "$profile" 2>/dev/null; then
+	notify "Power profile" "$label"
+else
+	notify "Could not set the power profile" "powerprofilesctl set $profile failed."
+fi

@@ -357,6 +357,17 @@ def pkill(name):
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def pkill_script(name):
+    """Kill a shell script (its process name is bash, so -x does not match)."""
+    subprocess.run(["pkill", "-u", str(os.getuid()), "-f", "(^|/)%s$" % name],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        os.unlink(os.path.join(os.environ.get("XDG_RUNTIME_DIR") or os.path.join(HOME, ".cache"),
+                               name + ".pid"))
+    except OSError:
+        pass
+
+
 def spawn(cmd):
     subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
@@ -379,7 +390,7 @@ def reload(changed, geo):
         time.sleep(0.3)
         spawn(["picom", "--config", PICOM_CFG])
     if changed["icons"]:
-        pkill("dwmstatus")
+        pkill_script("dwmstatus")
         spawn([os.path.join(BIN, "dwmstatus")])
     if changed["polybar"] or changed["barcfg"]:
         restart_polybar(geo)

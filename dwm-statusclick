@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# dwm-statusclick - turn a click on dwm's status text into an action.
+#
+# dwm passes the index of the clicked "   "-separated status segment; dwmstatus
+# keeps the matching action names in $XDG_CACHE_HOME/dwmstatus.actions:
+#   net -> network manager   bt -> bluetooth manager
+#   vol -> volume control    bat -> performance profile menu
+# Unclickable segments ("-") do nothing, so clicking the cat or clock is safe.
+set -u
+
+ACTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/dwmstatus.actions"
+idx=${1:-}
+[[ $idx =~ ^[0-9]+$ ]] || exit 0
+action=$(sed -n "$((idx + 1))p" "$ACTFILE" 2>/dev/null)
+[[ -n $action && $action != "-" ]] || exit 0
+
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a dwm "$@"; return 0; }
+run_gui() { setsid "$@" >/dev/null 2>&1 & }
+
+# open a terminal program (used when the GUI tool is not installed)
+open_term() {
+	if command -v kitty >/dev/null 2>&1; then
+		setsid kitty -e "$@" >/dev/null 2>&1 &
+	elif command -v xterm >/dev/null 2>&1; then
+		setsid xterm -e "$@" >/dev/null 2>&1 &
+	else
+		return 1
+	fi
+}
+
+case $action in
+	net)
+		if command -v nm-connection-editor >/dev/null 2>&1; then
+			run_gui nm-connection-editor
+		elif command -v nmtui >/dev/null 2>&1 && open_term nmtui; then
+			:
+		else
+			notify "Network manager not found" "Install network-manager-applet (nm-connection-editor)."
+		fi
+		;;
+	bt)
+		if command -v blueman-manager >/dev/null 2>&1; then
+			run_gui blueman-manager
+		elif command -v bluetoothctl >/dev/null 2>&1 && open_term bluetoothctl; then
+			:
+		else
+			notify "Bluetooth manager not found" "Install blueman (blueman-manager)."
+		fi
+		;;
+	vol)
+		if command -v pavucontrol >/dev/null 2>&1; then
+			run_gui pavucontrol
+		elif command -v pavucontrol-qt >/dev/null 2>&1; then
+			run_gui pavucontrol-qt
+		elif command -v alsamixer >/dev/null 2>&1 && open_term alsamixer; then
+			:
+		else
+			notify "Volume control not found" "Install pavucontrol."
+		fi
+		;;
+	bat)
+		exec "$HOME/.local/bin/dwm-perf"
+		;;
+esac

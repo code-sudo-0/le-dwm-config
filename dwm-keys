@@ -56,6 +56,13 @@ MOUSE
 BOTTOM BAR
   click the brush        pick a theme
   click the picture      pick a wallpaper (right-click: random)
+TOP BAR
+  click WiFi             network manager (nm-connection-editor)
+  click Bluetooth        blueman-manager
+  click volume           pavucontrol
+  click battery          performance profile (Performance/Balanced/Power Saver)
+  middle click status    open a terminal
+  click power button     power menu (suspend / log out / restart / shut down)
 MEDIA KEYS
   Volume up/down/mute, brightness up/down
 QUIT
