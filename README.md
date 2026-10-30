@@ -107,9 +107,9 @@ the same 8 px gap between the bars and the tiled windows, so windows never touch
 ### Dock (Super+P)
 
 `Super+P` runs `dwm-dock`. With the dock off (default) it opens the regular menu (`dmenu_run`).
-Turn the dock on with `dwm-bar set DOCK=1` (or Super+Shift+B → Dock) and Super+P opens a
-macOS-style application dock (rofi, icon grid) with a launcher; turn it off again and it falls
-back to dmenu.
+Turn the dock on with `dwm-bar set DOCK=1` (or Super+Shift+B → Dock) and Super+P toggles a real
+dock on the desktop - a polybar bar of application icons (terminal, web, files, code, settings)
+with a launcher button, macOS-style. Press Super+P again to hide it.
 
 ### Clicking the top bar
 

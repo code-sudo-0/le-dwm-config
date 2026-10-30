@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
 # dwm-dock - what Super+P does.
 #
-#   dock inactive (DOCK=0 in bar.conf): runs dmenu_run, the regular menu.
-#   dock active   (DOCK=1): opens a dock of installed applications with a
-#                           launcher (rofi drun; falls back to a dmenu list).
+#   dock feature off (DOCK=0 in bar.conf): runs dmenu_run, the regular menu.
+#   dock feature on  (DOCK=1): toggles a real dock on the desktop - a polybar
+#   bar of application icons (terminal, web, files, code, settings) with a
+#   launcher button. Press Super+P again to hide it.
 #
-# The active state is toggled with `dwm-bar` (Super+Shift+B -> Dock) or
+# Toggle the feature with `dwm-bar` (Super+Shift+B -> Dock) or
 # `dwm-bar set DOCK=1`. Super+P always calls this script, so the binding in
 # dwm's config.h never has to change.
 set -u
 
 CONF="${HOME}/.config/dwm-theme/bar.conf"
+DOCKCFG="${HOME}/.config/polybar/dock.ini"
+PIDFILE="${XDG_RUNTIME_DIR:-${HOME}/.cache}/dwm-dock.pid"
+
 dock=0
 if [[ -r $CONF ]]; then
 	dock=$(sed -n 's/^DOCK=//p' "$CONF" | head -1)
 fi
 dock="${dock:-0}"
 
+# feature off -> regular menu
 if [[ $dock != 1 ]]; then
-	# regular menu
 	if command -v dmenu_run >/dev/null 2>&1; then
 		exec dmenu_run
 	elif command -v rofi >/dev/null 2>&1; then
@@ -29,26 +33,19 @@ if [[ $dock != 1 ]]; then
 	fi
 fi
 
-# dock active: applications + launcher
-if command -v rofi >/dev/null 2>&1; then
-	exec rofi -show drun -show-icons -theme "${HOME}/.config/rofi/dock.rasi"
+# feature on -> toggle the real dock
+if [[ -f $PIDFILE ]] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+	# hide
+	kill "$(cat "$PIDFILE")" 2>/dev/null
+	rm -f "$PIDFILE"
+	exit 0
 fi
 
-# fallback without rofi: a dmenu listing the .desktop app names + "Launcher"
-apps=$(
-	for f in /usr/share/applications/*.desktop "$HOME/.local/share/applications"/*.desktop; do
-		[[ -r $f ]] || continue
-		name=$(sed -n 's/^Name=//p' "$f" | head -1)
-		exec_line=$(sed -n 's/^Exec=//p' "$f" | head -1)
-		[[ -n $name && -n $exec_line ]] || continue
-		printf '%s\t%s\n' "$name" "$exec_line"
-	done | sort -u
-)
-choice=$(printf '%s\n' "$(printf '%s\n' "$apps" | cut -f1)" "Launcher (dmenu_run)" | dmenu -i -p 'Dock') || exit 0
-if [[ $choice == "Launcher (dmenu_run)" ]]; then
-	exec dmenu_run
+if [[ ! -r $DOCKCFG ]]; then
+	command -v notify-send >/dev/null 2>&1 && notify-send -a dwm "Dock config missing" "Run the installer to create ~/.config/polybar/dock.ini."
+	exit 1
 fi
-exec_line=$(printf '%s\n' "$apps" | awk -F'\t' -v c="$choice" '$1==c{print $2; exit}')
-[[ -n $exec_line ]] || exit 0
-exec_line=${exec_line//%[a-zA-Z]/}
-setsid sh -c "$exec_line" >/dev/null 2>&1 &
+
+# show
+setsid polybar -c "$DOCKCFG" dock >/dev/null 2>&1 &
+echo $! > "$PIDFILE"

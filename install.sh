@@ -130,6 +130,8 @@ install_config() {
 	cp "$REPO_DIR"/themes/*.theme "$CONF/themes/" || return 1
 	mkdir -p "$CONF/bar"
 	cp "$REPO_DIR/polybar/config.ini.in" "$CONF/bar/polybar.ini.in" || return 1
+	# macOS-style dock (polybar) used by dwm-dock when the dock feature is on
+	[[ -f "$REPO_DIR/polybar/dock.ini" ]] && cp "$REPO_DIR/polybar/dock.ini" "$HOME/.config/polybar/dock.ini"
 	# macOS-style dock theme for rofi (used by dwm-dock when the dock is on)
 	[[ -f "$REPO_DIR/rofi/dock.rasi" ]] && cp "$REPO_DIR/rofi/dock.rasi" "$HOME/.config/rofi/dock.rasi"
 
