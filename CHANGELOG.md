@@ -42,6 +42,7 @@
 - Top bar is floating together with the bottom bar by default, with the tiled windows kept 8 px clear of both.
 - Super+P now runs `dwm-dock`: with the dock off (default) it opens the regular menu (dmenu_run); with the
   dock on (`dwm-bar set DOCK=1` or Super+Shift+B -> Dock) it toggles a real dock on the desktop - a
-  polybar bar of application icons (terminal, web, files, code, settings) with a launcher button,
-  macOS-style. Press Super+P again to hide it.
+  compact polybar bar of application icons (terminal, web, files, code, ...) with a launcher button in
+  the middle, macOS-style. Press Super+P again to hide it. Click the launcher to run, pin or unpin
+  applications; pinned apps are stored in ~/.config/dwm-dock/pinned.
 
