@@ -16,9 +16,11 @@ LAUNCH
   Super+Shift+/          this cheat sheet
 LOOK
   Super+Shift+T          pick a theme (dwm, bars, Thunar, terminal)
+  Super+Shift+B          bar style: one/two bars, top/bottom, floating, icons, rounded windows
   Super+Shift+W          wallpaper picker: previews of pictures + live wallpapers, recolors theme
   Super+Ctrl+W           random wallpaper
   Super+Ctrl+Shift+W     live wallpaper picker (dwm-live)
+  (terminal) dwm-bar preset <name> | set KEY=VALUE   bar styles (dwm-bar help)
   (terminal) dwm-wall auto on|off   theme follows the wallpaper
   (terminal) dwm-theme from-image <file>   theme from an image or video
   (terminal) dwm-live pick|random|set <video>|off   live wallpapers

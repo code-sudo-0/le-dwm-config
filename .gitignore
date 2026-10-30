@@ -1,0 +1,3 @@
+# local helper for publishing releases (kept on this machine, not pushed)
+release.sh
+*.bak-*

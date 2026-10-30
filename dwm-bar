@@ -1,0 +1,586 @@
+#!/usr/bin/env python3
+"""dwm-bar - bar layouts, floating bars, icon sets and rounded windows.
+
+  dwm-bar                      open the style menu (Super+Shift+B, or right-click the theme button)
+  dwm-bar preset <name>        apply a preset: default classic floating minimal dock stacked compact plain
+  dwm-bar presets              list the presets
+  dwm-bar set KEY=VALUE...     change single options (see `dwm-bar status` for the keys)
+  dwm-bar status               show the current style
+  dwm-bar apply                regenerate everything from bar.conf and reload
+  dwm-bar gen                  regenerate the files only (used by the installer)
+  dwm-bar init                 create bar.conf if missing (installer; honors BAR_PRESET, BAR_OPACITY, ANIMATIONS)
+  dwm-bar polybar              run polybar for the current layout (used by start-dwm)
+
+Options live in ~/.config/dwm-theme/bar.conf:
+  LAYOUT   split | split-flip | stack-top | stack-bottom | single-top | single-bottom
+  FLOAT    1 = bars float (gap + rounded), 0 = edge to edge
+  GAP      px: gap between windows, and the float margin of the bars
+  RADIUS   px: rounded corners of windows (and of floating bars); 0 = square
+  WIDTH    polybar: full | compact (centered, 70% wide)
+  DENSITY  polybar: normal | compact (shorter, smaller text)
+  ICONS    nerd | alt | dots | text
+  TAGS     config (as in your config.h) | icons | alt | numbers | roman
+  CAT      1 | 0   the running cat in the top bar
+  RES      auto | 1 | 0   CPU/RAM/disk in the top bar (auto: only when there is no second bar)
+  BAR_OPACITY  10-100, ANIMATIONS 0|1
+
+dwm itself needs a rebuild + restart (about a second) when the geometry or tags change.
+"""
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+CONF = os.path.join(HOME, ".config", "dwm-theme")
+BARCONF = os.path.join(CONF, "bar.conf")
+TEMPLATE = os.path.join(CONF, "bar", "polybar.ini.in")
+ICONS_SH = os.path.join(CONF, "bar-icons.sh")
+POLY_CFG = os.path.join(HOME, ".config", "polybar", "config.ini")
+PICOM_CFG = os.path.join(HOME, ".config", "picom", "picom.conf")
+DWM_SRC = os.path.expanduser(os.environ.get("DWM_SRC", "~/dwm"))
+BIN = os.path.join(HOME, ".local", "bin")
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+# ---------------------------------------------------------------- options
+
+LAYOUTS = {   # name: (where the dwm bar sits, where polybar sits or None)
+    "split":         ("top", "bottom"),
+    "split-flip":    ("bottom", "top"),
+    "stack-top":     ("top", "top"),
+    "stack-bottom":  ("bottom", "bottom"),
+    "single-top":    ("top", None),
+    "single-bottom": ("bottom", None),
+}
+LAYOUT_LABELS = {
+    "split":         "Two bars: dwm bar on top, polybar at the bottom",
+    "split-flip":    "Two bars: polybar on top, dwm bar at the bottom",
+    "stack-top":     "Two bars stacked at the top",
+    "stack-bottom":  "Two bars stacked at the bottom",
+    "single-top":    "One bar, on top (CPU/RAM/disk move into it)",
+    "single-bottom": "One bar, at the bottom (CPU/RAM/disk move into it)",
+}
+
+DEFAULTS = {
+    "LAYOUT": "split", "FLOAT": "1", "GAP": "8", "RADIUS": "8",
+    "WIDTH": "full", "DENSITY": "normal", "ICONS": "nerd", "TAGS": "config",
+    "CAT": "1", "RES": "auto", "BAR_OPACITY": "75", "ANIMATIONS": "1",
+}
+
+OPTIONS = {   # key: (menu title, [(value, label)])
+    "LAYOUT": ("Layout", [(k, LAYOUT_LABELS[k]) for k in LAYOUTS]),
+    "FLOAT": ("Floating bars", [("1", "On: bars float with a gap and rounded corners"),
+                                ("0", "Off: edge to edge")]),
+    "GAP": ("Gaps", [(str(n), "%d px" % n) for n in (0, 4, 6, 8, 10, 12, 16)]),
+    "RADIUS": ("Rounded corners", [("0", "Square"), ("6", "Slight (6 px)"), ("8", "Medium (8 px)"),
+                                   ("12", "Round (12 px)"), ("16", "Very round (16 px)")]),
+    "WIDTH": ("Second bar width", [("full", "Fill the whole width"), ("compact", "Compact, centered")]),
+    "DENSITY": ("Second bar size", [("normal", "Normal"), ("compact", "Compact (shorter, smaller text)")]),
+    "ICONS": ("Icons", [("nerd", "Nerd Font icons"), ("alt", "Alternate Nerd Font icons"),
+                        ("dots", "Colored dots"), ("text", "Text labels, no icons")]),
+    "TAGS": ("Workspace tags", [("config", "As in your config.h"), ("icons", "Icons"),
+                                ("alt", "Alternate icons"), ("numbers", "1 2 3"), ("roman", "I II III")]),
+    "CAT": ("Running cat", [("1", "On"), ("0", "Off")]),
+    "RES": ("CPU/RAM/disk in the top bar", [("auto", "Only when there is no second bar"),
+                                            ("1", "Always"), ("0", "Never")]),
+}
+MENU_ORDER = ["LAYOUT", "FLOAT", "GAP", "RADIUS", "WIDTH", "DENSITY", "ICONS", "TAGS", "CAT", "RES"]
+
+PRESETS = {
+    "default":  ("Two floating bars, rounded windows",
+                 {}),
+    "classic":  ("Edge-to-edge bars, square windows, 8 px gaps",
+                 {"FLOAT": "0", "RADIUS": "0"}),
+    "floating": ("Roomier: 12 px gaps, 12 px corners",
+                 {"GAP": "12", "RADIUS": "12"}),
+    "minimal":  ("One floating bar on top, numbered tags, no cat",
+                 {"LAYOUT": "single-top", "ICONS": "dots", "TAGS": "numbers", "CAT": "0"}),
+    "dock":     ("One floating bar at the bottom",
+                 {"LAYOUT": "single-bottom"}),
+    "stacked":  ("Both bars stacked at the bottom, compact",
+                 {"LAYOUT": "stack-bottom", "DENSITY": "compact", "TAGS": "numbers"}),
+    "compact":  ("Small centered second bar, alternate icons",
+                 {"WIDTH": "compact", "DENSITY": "compact", "ICONS": "alt"}),
+    "plain":    ("Text labels, numbered tags, square and flat",
+                 {"FLOAT": "0", "RADIUS": "0", "ICONS": "text", "TAGS": "numbers", "CAT": "0"}),
+}
+
+# -------------------------------------------------------------- glyph tables
+
+TAG_SETS = {
+    "icons": ["", "", "", "", "", "", "", "", ""],
+    "alt": ["", "", "", "", "", "", "", "", ""],
+    "numbers": [str(i) for i in range(1, 10)],
+    "roman": ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"],
+}
+
+_BAT = ["", "", "", "", ""]
+ICON_SETS = {
+    "nerd": dict(cpu="", ram="", disk="", temp="", up="", wall="",
+                 theme="", wifi="", vol="", mute="", bri="",
+                 bolt="", clock="", bt="", bat=_BAT),
+    "alt": dict(cpu="", ram="", disk="", temp="", up="", wall="",
+                theme="", wifi="", vol="", mute="", bri="",
+                bolt="", clock="", bt="", bat=_BAT),
+    "dots": dict(cpu="●", ram="●", disk="●", temp="●", up="●", wall="●",
+                 theme="●", wifi="●", vol="●", mute="●", bri="●",
+                 bolt="●", clock="●", bt="●", bat=["●"] * 5),
+    "text": dict(cpu="CPU", ram="RAM", disk="DISK", temp="TEMP", up="UP", wall="", theme="THEME",
+                 wifi="NET", vol="VOL", mute="VOL", bri="BRI", bolt="CHG", clock="", bt="BT",
+                 bat=["BAT"] * 5),
+}
+
+
+# ---------------------------------------------------------------- helpers
+
+def say(msg):
+    print("dwm-bar: " + msg, file=sys.stderr)
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def write_if_changed(path, text):
+    """Write text unless the file already has exactly it. Returns True when it changed."""
+    if read_text(path) == text:
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return True
+
+
+def valid(key, val):
+    if key in ("FLOAT", "CAT", "ANIMATIONS"):
+        return val in ("0", "1")
+    if key == "GAP":
+        return val.isdigit() and 0 <= int(val) <= 32
+    if key == "RADIUS":
+        return val.isdigit() and 0 <= int(val) <= 24
+    if key == "BAR_OPACITY":
+        return val.isdigit() and 10 <= int(val) <= 100
+    if key == "LAYOUT":
+        return val in LAYOUTS
+    if key in OPTIONS:
+        return val in [v for v, _ in OPTIONS[key][1]]
+    return False
+
+
+def load():
+    c = dict(DEFAULTS)
+    text = read_text(BARCONF) or ""
+    for line in text.splitlines():
+        m = re.match(r"^\s*([A-Z_]+)\s*=\s*([^\s#]+)", line)
+        if m and m.group(1) in DEFAULTS and valid(m.group(1), m.group(2)):
+            c[m.group(1)] = m.group(2)
+    return c
+
+
+def save(c):
+    lines = ["# dwm-bar settings: change them with `dwm-bar` (Super+Shift+B) or `dwm-bar set KEY=VALUE`.",
+             "# Run `dwm-bar help` for the allowed values."]
+    lines += ["%s=%s" % (k, c[k]) for k in DEFAULTS]
+    write_if_changed(BARCONF, "\n".join(lines) + "\n")
+
+
+def geometry(c):
+    dwm_pos, poly_pos = LAYOUTS[c["LAYOUT"]]
+    g = int(c["GAP"])
+    fl = c["FLOAT"] == "1" and g > 0
+    f = g if fl else 0
+    compact = c["DENSITY"] == "compact"
+    height = 22 if compact else 28
+    total = height + (2 if fl else 1)          # polybar height + its border
+    top = f + total if poly_pos == "top" else 0
+    bottom = f + total if poly_pos == "bottom" else 0
+    res = c["RES"] == "1" or (c["RES"] == "auto" and poly_pos is None)
+    return dict(dwm_pos=dwm_pos, poly_pos=poly_pos, gap=g, float=fl, f=f, height=height,
+                reserve_top=top, reserve_bottom=bottom, res=res, compact=compact)
+
+
+# -------------------------------------------------------------- generators
+
+def gen_barcfg(c, geo):
+    lines = [
+        "/* generated by dwm-bar: do not edit, run `dwm-bar` instead */",
+        "#define BAR_GAP %d" % geo["gap"],
+        "/* horizontal gap left outside the tiled windows (the bars' own side margin already provides part of it) */",
+        "#define BAR_OG (gappx > bar_side ? gappx - bar_side : 0)",
+        "static const int bar_dwm_show      = 1;",
+        "static const int bar_dwm_top       = %d;" % (1 if geo["dwm_pos"] == "top" else 0),
+        "static const int bar_side          = %d;   /* side margin of the floating bars */" % geo["f"],
+        "static const int bar_vgap          = %d;   /* gap between the dwm bar and the screen edge */" % geo["f"],
+        "static const int bar_reserve_top   = %d;   /* room kept for the second bar (polybar) */" % geo["reserve_top"],
+        "static const int bar_reserve_bottom = %d;" % geo["reserve_bottom"],
+    ]
+    if c["TAGS"] != "config":
+        tags = ", ".join('"%s"' % t for t in TAG_SETS[c["TAGS"]])
+        lines.append("#define BAR_TAGS { %s }" % tags)
+    return write_if_changed(os.path.join(DWM_SRC, "barcfg.h"), "\n".join(lines) + "\n") \
+        if os.path.isdir(DWM_SRC) else False
+
+
+def pfx(icon):
+    return icon + " " if icon else ""
+
+
+def gen_polybar(c, geo):
+    tpl = read_text(TEMPLATE) or read_text(os.path.join(HERE, "polybar", "config.ini.in"))
+    if tpl is None:
+        say("polybar template not found (%s)" % TEMPLATE)
+        return False
+    ic = ICON_SETS[c["ICONS"]]
+    f = geo["f"]
+    if c["WIDTH"] == "compact":
+        width, offx = "70%", "15%"
+    else:
+        width, offx = ("100%%:-%d" % (2 * f) if f else "100%"), str(f)
+    if geo["float"]:
+        border = "border-size = 1\nborder-color = ${colors.bg-hi}"
+    elif geo["poly_pos"] == "top":
+        border = "border-bottom-size = 1\nborder-color = ${colors.bg-hi}"
+    else:
+        border = "border-top-size = 1\nborder-color = ${colors.bg-hi}"
+    small = geo["compact"] or c["WIDTH"] == "compact"
+    wall_label = "wall" if (small and not ic["wall"]) else ("" if small else "wallpaper")
+    sub = {
+        "HOME": HOME, "WIDTH": width, "HEIGHT": str(geo["height"]), "OFFX": offx, "OFFY": str(f),
+        "BOTTOM": "true" if geo["poly_pos"] == "bottom" else "false", "BORDER": border,
+        "PAD": "1" if geo["compact"] else "2", "MARGIN": "1" if geo["compact"] else "2",
+        "FONT": "9" if geo["compact"] else "10",
+        "LEFT": "cpu memory fs temp", "CENTER": "" if small else "uptime", "RIGHT": "net wall theme",
+        "I_CPU": pfx(ic["cpu"]), "I_RAM": pfx(ic["ram"]), "I_DISK": pfx(ic["disk"]),
+        "I_TEMP": pfx(ic["temp"]), "I_UP": pfx(ic["up"]), "I_WALL": pfx(ic["wall"]),
+        "I_THEME": pfx(ic["theme"]), "WALL_LABEL": wall_label,
+    }
+    out = re.sub(r"@([A-Z_]+)@", lambda m: sub.get(m.group(1), m.group(0)), tpl)
+    out = re.sub(r"^modules-center = *\n", "", out, flags=re.M)
+    old = read_text(POLY_CFG)
+    if old is not None and "generated by dwm-bar" not in old and "install.sh copies this" not in old:
+        bak = POLY_CFG + ".bak-dwm"
+        if not os.path.exists(bak):
+            shutil.copy2(POLY_CFG, bak)
+    return write_if_changed(POLY_CFG, out)
+
+
+def picom_major():
+    try:
+        out = subprocess.run(["picom", "--version"], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"\d+", out)
+        return int(m.group(0)) if m else 0
+    except (OSError, subprocess.SubprocessError):
+        return 0
+
+
+ANIM = """# animations (picom 12+). Durations are in seconds; lower = snappier.
+animations = (
+  {
+    triggers = [ "open", "show" ];
+    preset = "appear";
+    scale = 0.9;
+    duration = 0.28;
+  },
+  {
+    triggers = [ "close", "hide" ];
+    preset = "disappear";
+    scale = 0.9;
+    duration = 0.22;
+  },
+  {
+    triggers = [ "geometry" ];
+    preset = "geometry-change";
+    duration = 0.28;
+  }
+);
+"""
+
+
+def gen_picom(c, geo):
+    r = int(c["RADIUS"])
+    lines = ["# generated by le-dwm-config dwm-bar (change it with `dwm-bar`; edits here are overwritten)",
+             'backend = "glx";', "vsync = true;", "shadow = false;", "fading = false;"]
+    if r > 0:
+        excl = ["window_type = 'desktop'", "class_g = 'xwinwrap'", "class_g = 'dwm-flash'"]
+        if not geo["float"]:
+            excl += ["class_g = 'dwm'", "class_g = 'Polybar'"]
+        lines.append("# rounded windows")
+        lines.append("corner-radius = %d;" % r)
+        lines.append("rounded-corners-exclude = [ %s ];" % ", ".join('"%s"' % e for e in excl))
+    lines.append("# translucent bars (percent, 100 = opaque). dwm's bar has class \"dwm\", polybar \"Polybar\".")
+    lines.append("opacity-rule = [")
+    lines.append("  \"%s:class_g = 'dwm'\"," % c["BAR_OPACITY"])
+    lines.append("  \"%s:class_g = 'Polybar'\"" % c["BAR_OPACITY"])
+    lines.append("];")
+    if c["ANIMATIONS"] == "1":
+        if picom_major() >= 12:
+            lines.append(ANIM.rstrip("\n"))
+        else:
+            say("picom is older than 12 (or missing): animations skipped")
+    text = "\n".join(lines) + "\n"
+    old = read_text(PICOM_CFG)
+    if old is not None and "generated by le-dwm-config" not in old:
+        bak = PICOM_CFG + ".bak-dwm"
+        if not os.path.exists(bak):
+            shutil.copy2(PICOM_CFG, bak)
+    return write_if_changed(PICOM_CFG, text)
+
+
+def gen_icons(c, geo):
+    ic = ICON_SETS[c["ICONS"]]
+    q = lambda s: "'%s'" % s
+    lines = ["# generated by dwm-bar: icons and options for dwmstatus",
+             "ICON_WIFI=%s" % q(ic["wifi"]), "ICON_VOL=%s" % q(ic["vol"]), "ICON_MUTE=%s" % q(ic["mute"]),
+             "ICON_BRI=%s" % q(ic["bri"]), "ICON_BOLT=%s" % q(ic["bolt"]), "ICON_CLOCK=%s" % q(ic["clock"]),
+             "ICON_BT=%s" % q(ic["bt"]), "ICON_CPU=%s" % q(ic["cpu"]), "ICON_RAM=%s" % q(ic["ram"]),
+             "ICON_DISK=%s" % q(ic["disk"]),
+             "BAT_ICONS=(%s)" % " ".join(q(b) for b in ic["bat"]),
+             "SHOW_CAT=%s" % c["CAT"], "SHOW_RES=%d" % (1 if geo["res"] else 0)]
+    return write_if_changed(ICONS_SH, "\n".join(lines) + "\n")
+
+
+def gen_all(c):
+    geo = geometry(c)
+    return dict(barcfg=gen_barcfg(c, geo), polybar=gen_polybar(c, geo),
+                picom=gen_picom(c, geo), icons=gen_icons(c, geo)), geo
+
+
+# ----------------------------------------------------------------- reload
+
+def pkill(name):
+    subprocess.run(["pkill", "-u", str(os.getuid()), "-x", name],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def spawn(cmd):
+    subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def restart_polybar(geo):
+    pkill("polybar")
+    if geo["poly_pos"] and shutil.which("polybar"):
+        import time
+        time.sleep(0.3)
+        spawn([os.path.join(BIN, "dwm-bar"), "polybar"])
+
+
+def reload(changed, geo):
+    if not os.environ.get("DISPLAY"):
+        return
+    if changed["picom"] and shutil.which("picom"):
+        pkill("picom")
+        import time
+        time.sleep(0.3)
+        spawn(["picom", "--config", PICOM_CFG])
+    if changed["icons"]:
+        pkill("dwmstatus")
+        spawn([os.path.join(BIN, "dwmstatus")])
+    if changed["polybar"] or changed["barcfg"]:
+        restart_polybar(geo)
+    if changed["barcfg"]:
+        theme = (read_text(os.path.join(CONF, "current")) or "nord").strip() or "nord"
+        env = dict(os.environ, DWM_SRC=DWM_SRC)
+        dt = os.path.join(BIN, "dwm-theme")
+        if os.path.exists(dt):
+            # rebuilds dwm (barcfg.h is newer than the binary) and restarts it
+            subprocess.run([dt, "set", theme], env=env)
+        else:
+            say("dwm-theme not found: rebuild dwm yourself (make clean install in %s)" % DWM_SRC)
+
+
+def apply(c, do_reload=True):
+    save(c)
+    changed, geo = gen_all(c)
+    if do_reload:
+        reload(changed, geo)
+    return changed
+
+
+# ------------------------------------------------------------------- menu
+
+def theme_colors():
+    d = {"BG": "#222222", "FG": "#bbbbbb", "ACCENT": "#005577", "ACCENT_FG": "#eeeeee"}
+    for line in (read_text(os.path.join(CONF, "current.sh")) or "").splitlines():
+        m = re.match(r'^([A-Z_]+)="?(#[0-9a-fA-F]{6})', line)
+        if m and m.group(1) in d:
+            d[m.group(1)] = m.group(2)
+    return d
+
+
+def menu(prompt, entries):
+    if not shutil.which("dmenu"):
+        say("dmenu not found; use `dwm-bar preset NAME` or `dwm-bar set KEY=VALUE`")
+        return None
+    t = theme_colors()
+    cmd = ["dmenu", "-i", "-l", str(min(len(entries), 22)), "-p", prompt,
+           "-fn", "JetBrainsMono Nerd Font:size=11",
+           "-nb", t["BG"], "-nf", t["FG"], "-sb", t["ACCENT"], "-sf", t["ACCENT_FG"]]
+    p = subprocess.run(cmd, input="\n".join(label for label, _ in entries), text=True,
+                       capture_output=True)
+    if p.returncode != 0:
+        return None
+    sel = p.stdout.rstrip("\n")
+    for label, val in entries:
+        if label == sel:
+            return val
+    return None
+
+
+def short(key, val):
+    for v, label in OPTIONS[key][1]:
+        if v == val:
+            return label.split(":")[0].split(" (")[0]
+    return val
+
+
+def pick():
+    base = load()
+    pending = {}
+    while True:
+        cur = dict(base, **pending)
+        entries = []
+        if pending:
+            entries.append(("▶ Apply %d change%s" % (len(pending), "" if len(pending) == 1 else "s"), "@apply"))
+        entries.append(("Presets…", "@presets"))
+        for k in MENU_ORDER:
+            mark = "*" if k in pending else " "
+            entries.append(("%s %s: %s" % (mark, OPTIONS[k][0], short(k, cur[k])), k))
+        entries.append(("Reset to the default style", "@reset"))
+        v = menu("bar style", entries)
+        if v is None:
+            return 0
+        if v == "@apply":
+            apply(cur)
+            return 0
+        if v == "@presets":
+            ents = [("%s: %s" % (n, PRESETS[n][0]), n) for n in PRESETS]
+            n = menu("preset", ents)
+            if n:
+                return do_preset(n)
+            continue
+        if v == "@reset":
+            return do_preset("default")
+        title, opts = OPTIONS[v]
+        ents = [(("✓ " if val == cur[v] else "  ") + label, val) for val, label in opts]
+        choice = menu(title.lower(), ents)
+        if choice is not None:
+            if choice == base[v]:
+                pending.pop(v, None)
+            else:
+                pending[v] = choice
+
+
+# --------------------------------------------------------------- commands
+
+def do_preset(name):
+    if name not in PRESETS:
+        say("no such preset: %s (try: dwm-bar presets)" % name)
+        return 1
+    c = load()
+    for k in OPTIONS:
+        c[k] = DEFAULTS[k]
+    c.update(PRESETS[name][1])
+    apply(c)
+    say("preset %s applied" % name)
+    return 0
+
+
+def do_set(args):
+    c = load()
+    for a in args:
+        if "=" not in a:
+            say("expected KEY=VALUE, got %r" % a)
+            return 1
+        k, v = a.split("=", 1)
+        k = k.upper()
+        if k not in DEFAULTS or not valid(k, v):
+            say("bad option %s=%s (see: dwm-bar help)" % (k, v))
+            return 1
+        c[k] = v
+    apply(c)
+    return 0
+
+
+def do_status():
+    c = load()
+    geo = geometry(c)
+    for k in DEFAULTS:
+        print("%-12s %s" % (k, c[k]))
+    print("dwm bar      %s    polybar  %s" % (geo["dwm_pos"], geo["poly_pos"] or "off"))
+    print("reserved     top %d px, bottom %d px (for polybar)" % (geo["reserve_top"], geo["reserve_bottom"]))
+    return 0
+
+
+def do_init():
+    c = load()
+    if not os.path.exists(BARCONF):
+        pass
+    preset = os.environ.get("BAR_PRESET")
+    if preset:
+        if preset not in PRESETS:
+            say("unknown BAR_PRESET %s (ignored)" % preset)
+        else:
+            c.update(PRESETS[preset][1])
+    for k in ("BAR_OPACITY", "ANIMATIONS"):
+        v = os.environ.get(k)
+        if v:
+            if valid(k, v):
+                c[k] = v
+            else:
+                say("ignoring %s=%s" % (k, v))
+    save(c)
+    return 0
+
+
+def do_polybar():
+    c = load()
+    geo = geometry(c)
+    if not geo["poly_pos"]:
+        return 0
+    if not shutil.which("polybar"):
+        return 0
+    os.execvp("polybar", ["polybar", "--config=" + POLY_CFG, "main"])
+
+
+def main(argv):
+    cmd = argv[0] if argv else "pick"
+    rest = argv[1:]
+    os.makedirs(CONF, exist_ok=True)
+    if cmd in ("pick", "menu"):
+        return pick()
+    if cmd == "preset":
+        return do_preset(rest[0]) if rest else (say("usage: dwm-bar preset <name>") or 1)
+    if cmd == "presets":
+        for n, (d, _) in PRESETS.items():
+            print("%-9s %s" % (n, d))
+        return 0
+    if cmd == "set":
+        return do_set(rest)
+    if cmd == "status":
+        return do_status()
+    if cmd == "apply":
+        apply(load())
+        return 0
+    if cmd == "gen":
+        c = load()
+        gen_all(c)
+        return 0
+    if cmd == "init":
+        return do_init()
+    if cmd == "polybar":
+        return do_polybar()
+    if cmd in ("help", "-h", "--help"):
+        print(__doc__.strip("\n"))
+        return 0
+    say("unknown command %r (try: dwm-bar help)" % cmd)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -57,7 +57,8 @@ gen_dwm() {
 	# same colors and dwm already built: no rebuild, no restart
 	# (but rebuild when dwm.c or config.h were edited/patched after the last build)
 	if [[ -f $DWM_SRC/colors.h && -x $BIN/dwm && $(<"$DWM_SRC/colors.h") == "$new" \
-		&& ! $DWM_SRC/dwm.c -nt $BIN/dwm && ! $DWM_SRC/config.h -nt $BIN/dwm ]]; then
+		&& ! $DWM_SRC/dwm.c -nt $BIN/dwm && ! $DWM_SRC/config.h -nt $BIN/dwm \
+		&& ! $DWM_SRC/barcfg.h -nt $BIN/dwm ]]; then
 		COLORS_UNCHANGED=1
 		return 0
 	fi
@@ -226,7 +227,11 @@ restart_polybar() {
 	[[ -f $HOME/.config/polybar/config.ini ]] || return 0
 	pkill -x polybar 2>/dev/null
 	sleep 0.3
-	setsid polybar --config="$HOME/.config/polybar/config.ini" bottom >/dev/null 2>&1 &
+	if [[ -x $BIN/dwm-bar ]]; then
+		setsid "$BIN/dwm-bar" polybar >/dev/null 2>&1 &   # layout-aware (may be off for one-bar styles)
+	else
+		setsid polybar --config="$HOME/.config/polybar/config.ini" main >/dev/null 2>&1 &
+	fi
 }
 
 reload() {

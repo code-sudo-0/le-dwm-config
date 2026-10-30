@@ -20,7 +20,9 @@ F="$SRC/dwm.c"
 rc=0
 
 # --- 1. bottom bar room -------------------------------------------------
-if grep -qF 'm->wh = m->mh - bottompad;' "$F"; then
+if grep -qF 'le-dwm-config: bar layout' "$F"; then
+	echo "patch-dwm: bar room handled by the bar layout patch"
+elif grep -qF 'm->wh = m->mh - bottompad;' "$F"; then
 	echo "patch-dwm: bottom bar room already applied"
 elif grep -q $'^\tm->wh = m->mh;$' "$F"; then
 	sed -i 's/^\tm->wh = m->mh;$/\tm->wh = m->mh - bottompad;/' "$F"
