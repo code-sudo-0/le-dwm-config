@@ -104,6 +104,13 @@ Put pictures in `~/Pictures/wallpapers` and live wallpapers (videos) in `~/Video
 Both bars float in the default style: an 8 px margin from the screen edge, rounded corners, and
 the same 8 px gap between the bars and the tiled windows, so windows never touch a bar.
 
+### Dock (Super+P)
+
+`Super+P` runs `dwm-dock`. With the dock off (default) it opens the regular menu (`dmenu_run`).
+Turn the dock on with `dwm-bar set DOCK=1` (or Super+Shift+B → Dock) and Super+P opens a
+macOS-style application dock (rofi, icon grid) with a launcher; turn it off again and it falls
+back to dmenu.
+
 ### Clicking the top bar
 
 Click (Button1) an item in the top bar:

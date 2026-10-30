@@ -31,7 +31,7 @@ fi
 
 # dock active: applications + launcher
 if command -v rofi >/dev/null 2>&1; then
-	exec rofi -show drun -show-icons
+	exec rofi -show drun -show-icons -theme "${HOME}/.config/rofi/dock.rasi"
 fi
 
 # fallback without rofi: a dmenu listing the .desktop app names + "Launcher"

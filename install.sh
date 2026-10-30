@@ -126,10 +126,12 @@ install_scripts() {
 
 install_config() {
 	echo "==> Installing themes and bar config"
-	mkdir -p "$CONF/themes" "$HOME/.config/polybar" || return 1
+	mkdir -p "$CONF/themes" "$HOME/.config/polybar" "$HOME/.config/rofi" || return 1
 	cp "$REPO_DIR"/themes/*.theme "$CONF/themes/" || return 1
 	mkdir -p "$CONF/bar"
 	cp "$REPO_DIR/polybar/config.ini.in" "$CONF/bar/polybar.ini.in" || return 1
+	# macOS-style dock theme for rofi (used by dwm-dock when the dock is on)
+	[[ -f "$REPO_DIR/rofi/dock.rasi" ]] && cp "$REPO_DIR/rofi/dock.rasi" "$HOME/.config/rofi/dock.rasi"
 
 	# bar layout/style (dwm-bar): writes bar.conf, barcfg.h for dwm, the polybar config,
 	# picom.conf and the status icons. BAR_PRESET=classic|floating|minimal|dock|stacked|compact|plain
