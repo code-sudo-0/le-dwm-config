@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# dwm-status-click - what a left click on the top bar's status text does.
+#
+#   dwm-status-click <n>       n = index of the clicked character (dwm passes this)
+#   dwm-status-click wifi|bluetooth|sound|battery     run one action directly
+#
+#   wifi       -> NetworkManager connection editor (falls back to nmtui in a terminal)
+#   bluetooth  -> Blueman (falls back to bluetoothctl in a terminal)
+#   sound      -> pavucontrol
+#   battery    -> power profile menu: Performance / Balanced / Power Saver
+#
+# dwmstatus writes the item positions to $XDG_RUNTIME_DIR/dwmstatus.map.
+MAP="${XDG_RUNTIME_DIR:-/tmp}/dwmstatus.map"
+BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+# shellcheck source=/dev/null
+[[ -r $HOME/.config/dwm-theme/current.sh ]] && . "$HOME/.config/dwm-theme/current.sh"
+
+note() { command -v notify-send >/dev/null 2>&1 && notify-send "$1" "$2"; return 0; }
+
+# start a program without tying it to this script
+launch() { setsid -f "$@" >/dev/null 2>&1; }
+
+term() {   # run a command in kitty (or any terminal that is around)
+	local t
+	for t in kitty alacritty foot xterm; do
+		command -v "$t" >/dev/null 2>&1 && { launch "$t" -e "$@"; return 0; }
+	done
+	return 1
+}
+
+wifi() {
+	if command -v nm-connection-editor >/dev/null 2>&1; then launch nm-connection-editor
+	elif command -v nmtui >/dev/null 2>&1; then term nmtui
+	else note "Network settings" "Install nm-connection-editor (sudo pacman -S nm-connection-editor)."; fi
+}
+
+bluetooth() {
+	if command -v blueman-manager >/dev/null 2>&1; then launch blueman-manager
+	elif command -v bluetoothctl >/dev/null 2>&1; then term bluetoothctl
+	else note "Bluetooth" "Install blueman (sudo pacman -S blueman)."; fi
+}
+
+sound() {
+	if command -v pavucontrol >/dev/null 2>&1; then launch pavucontrol
+	elif command -v pwvucontrol >/dev/null 2>&1; then launch pwvucontrol
+	else note "Sound settings" "Install pavucontrol (sudo pacman -S pavucontrol)."; fi
+}
+
+battery() {
+	if ! command -v powerprofilesctl >/dev/null 2>&1; then
+		note "Power profiles" "Install power-profiles-daemon (sudo pacman -S power-profiles-daemon) and run: sudo systemctl enable --now power-profiles-daemon"
+		return 0
+	fi
+	local cur choice mark
+	cur=$(powerprofilesctl get 2>/dev/null)
+	entry() {   # entry <profile> <label>
+		mark="  "; [[ $cur == "$1" ]] && mark="✓ "
+		printf '%s%s\n' "$mark" "$2"
+	}
+	choice=$({ entry performance Performance; entry balanced Balanced; entry power-saver "Power Saver"; } \
+		| dmenu -i -l 3 -p "power profile" -fn "JetBrainsMono Nerd Font:size=11" \
+			-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG") || return 0
+	case $choice in
+		*Performance*) powerprofilesctl set performance ;;
+		*Balanced*) powerprofilesctl set balanced ;;
+		*"Power Saver"*) powerprofilesctl set power-saver ;;
+		*) return 0 ;;
+	esac || note "Power profiles" "Could not switch the profile (is power-profiles-daemon running?)."
+}
+
+case ${1:-} in
+	wifi|net) wifi; exit 0 ;;
+	bluetooth|bt) bluetooth; exit 0 ;;
+	sound|vol) sound; exit 0 ;;
+	battery|bat) battery; exit 0 ;;
+	''|*[!0-9]*) echo "usage: dwm-status-click <character-index> | wifi | bluetooth | sound | battery" >&2; exit 1 ;;
+esac
+
+idx=$1
+[[ -r $MAP ]] || exit 0
+while read -r name start end; do
+	if ((idx >= start && idx < end)); then
+		case $name in
+			net) wifi ;;
+			bt) bluetooth ;;
+			vol) sound ;;
+			bat) battery ;;
+		esac
+		exit 0
+	fi
+done < "$MAP"
+exit 0

@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# dwm-settings - one menu for the desktop: display, theme, bar, wallpaper,
+# gaps, corners, opacity, animations, terminal and session tools.
+#
+# Open with Super+Shift+D, the gear on the bottom bar, or `dwm-settings`.
+set -u
+
+BIN="${HOME}/.local/bin"
+CONF="${HOME}/.config/dwm-theme"
+MENU="${BIN}/dwm-menu"
+BAR_CONF="${CONF}/bar.conf"
+KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
+
+msg() {
+	echo "dwm-settings: $*" >&2
+	command -v notify-send >/dev/null 2>&1 && notify-send -a dwm-settings "$*" 2>/dev/null
+	return 0
+}
+
+bar_get() {
+	sed -n "s/^$1=//p" "$BAR_CONF" 2>/dev/null | head -n1
+}
+
+bar_set() {
+	"$BIN/dwm-bar" set "$1=$2" >/dev/null 2>&1 || {
+		msg "could not change $1 (run dwm-bar status in a terminal for details)"
+		return 1
+	}
+}
+
+theme_name() {
+	cat "$CONF/name" 2>/dev/null || cat "$CONF/current" 2>/dev/null || printf 'none'
+}
+
+wall_name() {
+	local f
+	f=$(cat "$CONF/wallpaper" 2>/dev/null)
+	[[ -n $f ]] && basename "$f" || printf 'none'
+}
+
+kitty_opacity() {
+	sed -n 's/^[[:space:]]*background_opacity[[:space:]]*//p' "$KITTY_CONF" 2>/dev/null | tail -n1
+}
+
+set_kitty_opacity() {
+	local val=$1
+	[[ -f $KITTY_CONF ]] || { msg "no kitty.conf"; return 1; }
+	if grep -q '^[[:space:]]*background_opacity' "$KITTY_CONF"; then
+		sed -i "s/^[[:space:]]*background_opacity.*/background_opacity $val/" "$KITTY_CONF"
+	else
+		printf '\nbackground_opacity %s\n' "$val" >> "$KITTY_CONF"
+	fi
+	# kitty reloads its config on SIGUSR1
+	pkill -SIGUSR1 -x kitty 2>/dev/null
+}
+
+auto_theme_state() {
+	[[ -f $CONF/auto-theme ]] && printf 'on' || printf 'off'
+}
+
+terminal_run() {
+	local t
+	for t in kitty alacritty xterm; do
+		if command -v "$t" >/dev/null 2>&1; then
+			setsid "$t" -e sh -c "$1" >/dev/null 2>&1 &
+			return 0
+		fi
+	done
+	msg "no terminal found (install kitty)"
+	return 1
+}
+
+wallpaper_menu() {
+	local choice
+	while :; do
+		choice=$(printf '%s\n' \
+			"Current: $(wall_name)" \
+			"Pick a wallpaper…" \
+			"Random wallpaper" \
+			"Bundled wallpaper (coastline)" \
+			"Live wallpaper…" \
+			"Theme follows wallpaper: $(auto_theme_state)" \
+			"Back" | "$MENU" "wallpaper")
+		case $choice in
+			'') return 0 ;;
+			*'Pick a wallpaper'*) "$BIN/dwm-wall" pick ;;
+			*'Random wallpaper'*) "$BIN/dwm-wall" random ;;
+			*'Bundled wallpaper'*) "$BIN/dwm-wall" default ;;
+			*'Live wallpaper'*) "$BIN/dwm-live" pick ;;
+			*'Theme follows wallpaper'*)
+				if [[ $(auto_theme_state) == on ]]; then
+					"$BIN/dwm-wall" auto off
+				else
+					"$BIN/dwm-wall" auto on
+				fi
+				;;
+			*'Back') return 0 ;;
+		esac
+	done
+}
+
+gaps_menu() {
+	local cur choice n
+	cur=$(bar_get GAP)
+	choice=$(printf '%s\n' 0 4 6 8 10 12 16 20 24 | while read -r n; do
+		[[ $n == "$cur" ]] && printf '✓ %s px\n' "$n" || printf '  %s px\n' "$n"
+	done | "$MENU" "gap size") || return 0
+	[[ -n $choice ]] || return 0
+	n=${choice//[!0-9]/}
+	[[ -n $n ]] && bar_set GAP "$n"
+}
+
+radius_menu() {
+	local cur choice n
+	cur=$(bar_get RADIUS)
+	choice=$(printf '%s\n' 0 6 8 12 16 | while read -r n; do
+		[[ $n == "$cur" ]] && printf '✓ %s px\n' "$n" || printf '  %s px\n' "$n"
+	done | "$MENU" "rounded corners") || return 0
+	[[ -n $choice ]] || return 0
+	n=${choice//[!0-9]/}
+	[[ -n $n ]] && bar_set RADIUS "$n"
+}
+
+opacity_menu() {
+	local cur choice n
+	cur=$(bar_get BAR_OPACITY)
+	choice=$(printf '%s\n' 50 60 70 75 80 85 90 95 100 | while read -r n; do
+		[[ $n == "$cur" ]] && printf '✓ %s%%\n' "$n" || printf '  %s%%\n' "$n"
+	done | "$MENU" "bar opacity") || return 0
+	[[ -n $choice ]] || return 0
+	n=${choice//[!0-9]/}
+	[[ -n $n ]] && bar_set BAR_OPACITY "$n"
+}
+
+kitty_menu() {
+	local cur choice val
+	cur=$(kitty_opacity)
+	[[ -n $cur ]] || cur=0.85
+	choice=$(printf '%s\n' 0.70 0.80 0.85 0.90 0.95 1.00 | while read -r val; do
+		[[ $val == "$cur" ]] && printf '✓ %s\n' "$val" || printf '  %s\n' "$val"
+	done | "$MENU" "terminal opacity") || return 0
+	[[ -n $choice ]] || return 0
+	val=${choice//[!0-9.]/}
+	[[ -n $val ]] && set_kitty_opacity "$val"
+}
+
+session_menu() {
+	local choice
+	while :; do
+		choice=$(printf '%s\n' \
+			"Session doctor (opens a terminal)" \
+			"Safe mode: $([[ -e $CONF/safe-mode ]] && echo on || echo off)" \
+			"Restart dwm" \
+			"Quit dwm (asks first)" \
+			"Back" | "$MENU" "session") || return 0
+		case $choice in
+			'') return 0 ;;
+			*'Session doctor'*)
+				terminal_run 'bash "$HOME/.local/bin/dwm-doctor"; printf "\nPress Enter to close… "; read -r _'
+				;;
+			*'Safe mode'*)
+				if [[ -e $CONF/safe-mode ]]; then
+					rm -f "$CONF/safe-mode"
+					msg "safe mode off: the next login starts picom, bars and wallpaper"
+				else
+					touch "$CONF/safe-mode"
+					msg "safe mode on: the next login skips picom, bars and wallpaper"
+				fi
+				;;
+			*'Restart dwm'*)
+				if [[ ${DWM_RESTARTABLE:-0} == 1 ]]; then
+					pkill -x dwm 2>/dev/null || msg "dwm is not running"
+				else
+					msg "dwm was not started by start-dwm; restarting would end the session"
+				fi
+				;;
+			*'Quit dwm'*) "$BIN/dwm-quit" ;;
+			*'Back') return 0 ;;
+		esac
+	done
+}
+
+main_menu() {
+	local choice gap radius opacity
+	while :; do
+		gap=$(bar_get GAP); radius=$(bar_get RADIUS); opacity=$(bar_get BAR_OPACITY)
+		choice=$(printf '%s\n' \
+			"Display settings…" \
+			"Theme: $(theme_name)…" \
+			"Bar style…" \
+			"Wallpaper: $(wall_name)…" \
+			"Gaps: ${gap:-8} px…" \
+			"Rounded corners: ${radius:-8} px…" \
+			"Bar opacity: ${opacity:-75}%…" \
+			"Animations: $( [[ $(bar_get ANIMATIONS) == 0 ]] && echo off || echo on )" \
+			"Terminal opacity: $(kitty_opacity)…" \
+			"Keyboard shortcuts" \
+			"Power menu" \
+			"Session…" \
+			"Close" | "$MENU" "settings")
+		case $choice in
+			'') return 0 ;;
+			*'Display settings'*) "$BIN/dwm-display" menu ;;
+			*'Theme:'*) "$BIN/dwm-theme" pick ;;
+			*'Bar style'*) "$BIN/dwm-bar" pick ;;
+			*'Wallpaper:'*) wallpaper_menu ;;
+			*'Gaps:'*) gaps_menu ;;
+			*'Rounded corners'*) radius_menu ;;
+			*'Bar opacity'*) opacity_menu ;;
+			*'Animations:'*)
+				if [[ $(bar_get ANIMATIONS) == 0 ]]; then bar_set ANIMATIONS 1; else bar_set ANIMATIONS 0; fi
+				;;
+			*'Terminal opacity'*) kitty_menu ;;
+			*'Keyboard shortcuts'*) "$BIN/dwm-keys" ;;
+			*'Power menu'*) "$BIN/dwm-power-menu" ;;
+			*'Session'*) session_menu ;;
+			*'Close') return 0 ;;
+		esac
+	done
+}
+
+main_menu

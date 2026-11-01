@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# dwm-doctor - find out why the dwm desktop does not come up (grey/black screen, kicked back to login).
+#
+# Run it from a text console (Ctrl+Alt+F3, log in) or from any terminal:
+#     bash ~/le-dwm-config/dwm-doctor
+# The SUMMARY at the top is the part to read out or send; everything is also saved to ~/dwm-doctor.txt.
+# It only reads things and never changes your setup.
+BIN="$HOME/.local/bin"
+CONF="$HOME/.config/dwm-theme"
+SRC="${DWM_SRC:-$HOME/dwm}"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/dwm"
+OUT="$HOME/dwm-doctor.txt"
+
+summary() {
+	echo "SUMMARY"
+	if [[ -x $BIN/dwm ]]; then
+		if "$BIN/dwm" -v 2>&1 | grep -q '^dwm-'; then echo "  dwm binary:      ok ($($BIN/dwm -v 2>&1))"
+		else echo "  dwm binary:      PRESENT BUT BROKEN (does not start)"; fi
+	else
+		echo "  dwm binary:      MISSING -> the build failed or never ran (see build log below)"
+	fi
+	if [[ -f $CONF/build.log ]] && grep -qiE 'error|failed' "$CONF/build.log"; then
+		echo "  last build:      ERRORS in $CONF/build.log"
+	elif [[ -f $CONF/build.log ]]; then
+		echo "  last build:      clean"
+	else
+		echo "  last build:      no build log"
+	fi
+	[[ -x $BIN/start-dwm ]] && echo "  start-dwm:       installed" || echo "  start-dwm:       MISSING (run ./install.sh)"
+	[[ -f /usr/share/xsessions/dwm.desktop ]] && echo "  session entry:   /usr/share/xsessions/dwm.desktop" || echo "  session entry:   missing (login manager won't list dwm)"
+	if [[ -f $STATE/session.log ]]; then
+		echo "  last session:    $(grep -E '^=== start-dwm [0-9]' "$STATE/session.log" | tail -n1)"
+		echo "  dwm exits:       $(grep -E '^dwm exited' "$STATE/session.log" | tail -n3 | tr '\n' ';')"
+		grep -qE 'SAFE MODE' "$STATE/session.log" && echo "  safe mode:       was used (after a crash)"
+		grep -qE 'picom exited early' "$STATE/session.log" && echo "  picom:           EXITED EARLY (compositor config or driver problem)"
+	else
+		echo "  session log:     none yet (the session never reached start-dwm, or it is the old start-dwm)"
+	fi
+	[[ -e $CONF/safe-mode ]] && echo "  safe-mode file:  present (delete $CONF/safe-mode to turn compositor etc. back on)"
+	echo "  display server:  ${XDG_SESSION_TYPE:-unknown}  (dwm needs X11, not Wayland)"
+	local gpu
+	gpu=$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | head -n2 | sed 's/^[^ ]* //')
+	[[ -n $gpu ]] && echo "  graphics:        $gpu"
+	echo
+}
+
+sec() { printf '\n==== %s ====\n' "$1"; }
+
+all() {
+	date
+	echo "user $(id -un), kernel $(uname -r)"
+	summary
+	sec "session log (last 60 lines)"
+	tail -n 60 "$STATE/session.log" 2>/dev/null || echo "(none)"
+	sec "last error window text"
+	cat "$STATE/last-error.txt" 2>/dev/null || echo "(none)"
+	sec "dwm build log (last 40 lines)"
+	tail -n 40 "$CONF/build.log" 2>/dev/null || echo "(none)"
+	sec "programs"
+	for p in dwm picom polybar kitty rofi feh xwinwrap mpv; do
+		printf '%-9s %s\n' "$p" "$(command -v "$p" 2>/dev/null || echo not-found)"
+	done
+	picom --version 2>&1 | head -n1
+	polybar --version 2>&1 | head -n1
+	sec "running now"
+	pgrep -a 'dwm|picom|polybar|dwmstatus|start-dwm|xwinwrap|Xorg|sddm|lightdm' 2>/dev/null || echo "(nothing)"
+	sec "login setup"
+	echo "--- ~/.xinitrc"; cat ~/.xinitrc 2>/dev/null || echo "(none)"
+	echo "--- /usr/share/xsessions/dwm.desktop"; cat /usr/share/xsessions/dwm.desktop 2>/dev/null || echo "(none)"
+	echo "--- display manager"; systemctl list-units --type=service --no-pager 2>/dev/null | grep -E 'sddm|lightdm|gdm|ly|greetd|lxdm' || echo "(none found)"
+	sec "bar settings"
+	cat "$CONF/bar.conf" 2>/dev/null || echo "(no bar.conf)"
+	echo "--- $SRC/barcfg.h"; cat "$SRC/barcfg.h" 2>/dev/null || echo "(none)"
+	sec "picom.conf"
+	cat ~/.config/picom/picom.conf 2>/dev/null || echo "(none)"
+	sec "X server log (errors)"
+	for f in ~/.local/share/xorg/Xorg.0.log /var/log/Xorg.0.log; do
+		[[ -r $f ]] && { echo "--- $f"; grep -E '\(EE\)|Fatal|failed' "$f" | tail -n 15; }
+	done
+	sec "~/.xsession-errors (last 30)"
+	tail -n 30 ~/.xsession-errors 2>/dev/null || echo "(none)"
+	sec "system log, this boot and the one before (dwm / picom / display manager / X)"
+	for b in 0 -1; do
+		echo "--- boot $b"
+		journalctl -b "$b" --no-pager 2>/dev/null | grep -iE 'dwm|picom|start-dwm|Xorg|sddm|lightdm|segfault' | tail -n 25
+	done
+}
+
+all 2>&1 | tee "$OUT"
+echo
+echo "Saved to $OUT. Read out (or send) the SUMMARY at the top; add the session log if it is not obvious."

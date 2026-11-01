@@ -6,5 +6,5 @@ release.sh
 __pycache__/
 *.pyc
 
-# screenshots / test artifacts
-*.png
+# a second clone nested inside this one (not part of the project)
+le-dwm-config/

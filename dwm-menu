@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# dwm-menu - pick one line from stdin with rofi (themed) or dmenu.
+#
+#   printf 'one\ntwo\n' | dwm-menu "prompt"
+#
+# rofi is used when it is installed, with a small menu theme built from the
+# active dwm-theme palette. Without rofi this falls back to the themed dmenu
+# used by the other le-dwm-config menus.
+set -u
+
+prompt="${1:-choose}"
+CONF="${HOME}/.config/dwm-theme"
+BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440"
+BG_ALT="#3b4252" FG_DIM="#8a94a8"
+# shellcheck source=/dev/null
+[[ -r "$CONF/current.sh" ]] && . "$CONF/current.sh"
+
+if command -v rofi >/dev/null 2>&1; then
+	rasi="$CONF/menu.rasi"
+	cat > "$rasi" <<RASI
+* {
+    bg: ${BG};
+    bgalt: ${BG_ALT};
+    fg: ${FG};
+    fgdim: ${FG_DIM};
+    accent: ${ACCENT};
+    accentfg: ${ACCENT_FG};
+    font: "JetBrainsMono Nerd Font 11";
+    background-color: transparent;
+    text-color: @fg;
+}
+window {
+    location: center;
+    anchor: center;
+    width: 620px;
+    padding: 14px;
+    border: 2px;
+    border-radius: 14px;
+    border-color: @accent;
+    background-color: @bg;
+}
+mainbox {
+    spacing: 12px;
+    children: [ inputbar, listview ];
+}
+inputbar {
+    spacing: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background-color: @bgalt;
+    children: [ prompt, entry ];
+}
+prompt {
+    text-color: @accent;
+}
+entry {
+    placeholder: "type to filter";
+    placeholder-color: @fgdim;
+}
+listview {
+    lines: ${DWM_MENU_LINES:-16};
+    columns: 1;
+    spacing: 4px;
+    scrollbar: false;
+    fixed-height: false;
+}
+element {
+    padding: 8px 10px;
+    border-radius: 8px;
+}
+element selected {
+    background-color: @accent;
+    text-color: @accentfg;
+}
+RASI
+	exec rofi -dmenu -i -no-custom -p "$prompt" -theme "$rasi"
+fi
+
+# dmenu fallback, colored like the current theme
+exec dmenu -i -l "${DWM_MENU_LINES:-16}" -p "$prompt" \
+	-fn "JetBrainsMono Nerd Font:size=11" \
+	-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG"

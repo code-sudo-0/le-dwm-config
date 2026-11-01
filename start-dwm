@@ -3,44 +3,125 @@
 #
 # dwm is relaunched if it is killed, which is how dwm-theme applies new bar
 # colors without ending your session. Confirming the Super+Shift+Q prompt
-# (dwm-quit) ends the session; a crash within 3 seconds of starting also ends it,
-# so a broken build cannot spin forever.
+# (dwm-quit) ends the session.
+#
+# Nothing here should leave you staring at a grey screen:
+#   - every step is logged to ~/.local/state/dwm/session.log
+#   - if dwm is missing or dies right after starting, a terminal window shows
+#     the error and the end of that log, then the session ends
+#   - after such a crash the next start is in SAFE MODE (no picom, polybar,
+#     wallpapers) so you can get in and fix things. Force it any time with
+#     `touch ~/.config/dwm-theme/safe-mode` (delete the file to leave it) or DWM_SAFE=1.
 BIN="$HOME/.local/bin"
 export PATH="$BIN:$PATH"
 export DWM_RESTARTABLE=1
 
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/dwm"
+mkdir -p "$STATE"
+LOG="$STATE/session.log"
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 200000 ]; then mv -f "$LOG" "$LOG.1"; fi
+exec >>"$LOG" 2>&1
+echo "=== start-dwm $(date '+%F %T') pid $$ DISPLAY=${DISPLAY:-unset}"
+
 QUIT_FLAG="${XDG_RUNTIME_DIR:-/tmp}/dwm-quit-$(id -u)"
 rm -f "$QUIT_FLAG"
 
+SAFE=0
+[ "${DWM_SAFE:-0}" = 1 ] && SAFE=1
+[ -e "$HOME/.config/dwm-theme/safe-mode" ] && SAFE=1
+if [ -e "$STATE/crashed" ]; then
+	rm -f "$STATE/crashed"
+	SAFE=1
+	echo "the last session ended in a crash: starting in SAFE MODE (no picom, polybar, wallpaper)"
+fi
+[ "$SAFE" = 1 ] && echo "safe mode is ON"
+
 [ -r "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources"
 
-PICOM_PID=""
-if command -v picom >/dev/null 2>&1 && [ -f "$HOME/.config/picom/picom.conf" ]; then
-	picom --config "$HOME/.config/picom/picom.conf" >/dev/null 2>&1 &
-	PICOM_PID=$!
+# a plain colored background right away (not X's grey), so you can tell the session started
+( [ -r "$HOME/.config/dwm-theme/current.sh" ] && . "$HOME/.config/dwm-theme/current.sh"
+  xsetroot -solid "${BG:-#2e3440}" ) 2>/dev/null
+
+# restore the display layout saved with `dwm-display` (Super+Shift+D -> Display)
+if [ -x "$BIN/dwm-display" ] && [ -f "$HOME/.config/dwm-theme/display.sh" ]; then
+	"$BIN/dwm-display" apply || echo "!! could not restore the display layout; continuing with the current one"
 fi
 
-"$BIN/dwm-wall" restore &
+# show a problem in a window instead of leaving a blank screen
+fail_screen() {
+	t=""
+	for c in kitty xterm alacritty; do
+		command -v "$c" >/dev/null 2>&1 && { t=$c; break; }
+	done
+	err="$STATE/last-error.txt"
+	{
+		echo "$1"
+		echo
+		echo "Log: $LOG   (last lines below)"
+		echo "To find the cause run, from a terminal:  bash ~/le-dwm-config/dwm-doctor"
+		echo "-----"
+		tail -n 40 "$LOG"
+	} > "$err"
+	echo "!! $1"
+	if [ -n "$t" ]; then
+		"$t" -e sh -c "cat '$err'; echo; printf 'Press Enter to close (this ends the session)... '; read x"
+	elif command -v xmessage >/dev/null 2>&1; then
+		xmessage -file "$err"
+	fi
+}
+
+PICOM_PID=""
+if [ "$SAFE" != 1 ] && command -v picom >/dev/null 2>&1 && [ -f "$HOME/.config/picom/picom.conf" ]; then
+	picom --config "$HOME/.config/picom/picom.conf" &
+	PICOM_PID=$!
+	( sleep 3; kill -0 "$PICOM_PID" 2>/dev/null || echo "!! picom exited early (see its messages above); continuing without it" ) &
+fi
+
+[ "$SAFE" != 1 ] && "$BIN/dwm-wall" restore &
 "$BIN/dwmstatus" &
 STATUS_PID=$!
 
 POLY_PID=""
 # dwm-bar starts polybar where the chosen layout wants it (or not at all for one-bar layouts)
-if [ -x "$BIN/dwm-bar" ] && [ -f "$HOME/.config/polybar/config.ini" ]; then
-	"$BIN/dwm-bar" polybar >/dev/null 2>&1 &
+if [ "$SAFE" != 1 ] && [ -x "$BIN/dwm-bar" ] && [ -f "$HOME/.config/polybar/config.ini" ]; then
+	"$BIN/dwm-bar" polybar &
 	POLY_PID=$!
 fi
 
+fast=0
 while :; do
 	started=$(date +%s)
-	"$BIN/dwm"
-	status=$?
+	if [ -x "$BIN/dwm" ]; then
+		"$BIN/dwm"
+		status=$?
+	else
+		status=127
+		echo "!! $BIN/dwm does not exist"
+	fi
+	lived=$(( $(date +%s) - started ))
+	echo "dwm exited with status $status after ${lived}s"
 	[ "$status" -eq 0 ] && break
 	# dwm-quit leaves this flag after you confirm "close dwm"
 	if [ -e "$QUIT_FLAG" ]; then rm -f "$QUIT_FLAG"; break; fi
-	[ $(( $(date +%s) - started )) -lt 3 ] && break
+	if [ "$status" -eq 127 ]; then
+		touch "$STATE/crashed"
+		fail_screen "dwm is not installed ($BIN/dwm is missing). Run ./install.sh again and read its output: the build probably failed."
+		break
+	fi
+	if [ "$lived" -lt 3 ]; then
+		touch "$STATE/crashed"
+		fail_screen "dwm stopped right after starting (exit status $status)."
+		break
+	fi
+	if [ "$lived" -lt 10 ]; then fast=$((fast + 1)); else fast=0; fi
+	if [ "$fast" -ge 3 ]; then
+		touch "$STATE/crashed"
+		fail_screen "dwm keeps stopping within seconds of starting (exit status $status)."
+		break
+	fi
 done
 
 kill "$STATUS_PID" $POLY_PID $PICOM_PID 2>/dev/null
 pkill -u "$(id -u)" -x polybar 2>/dev/null
+echo "=== start-dwm ended $(date '+%F %T')"
 exit 0

@@ -6,6 +6,7 @@
 #                        choosing one applies it and recolors the whole theme.
 #                        Without rofi: nsxiv thumbnails (press m on a picture, then q), or a dmenu list.
 #   dwm-wall random      switch to a random wallpaper
+#   dwm-wall default     use the wallpaper shipped with le-dwm-config
 #   dwm-wall set <file>  use a specific image
 #   dwm-wall restore     re-apply the last wallpaper (run at login)
 #   dwm-wall auto on|off|status   make the whole theme follow the wallpaper
@@ -24,6 +25,8 @@ STATE="$CONF/wallpaper"
 AUTO="$CONF/auto-theme"          # exists = theme follows the wallpaper
 BIN="$HOME/.local/bin"
 LIVE="$CONF/live-wallpaper"      # exists = a live (video) wallpaper is on; holds its path
+# wallpaper shipped with le-dwm-config (installed by install.sh)
+BUNDLED="${DWM_BUNDLED_WALL:-$HOME/.local/share/le-dwm-config/wallpapers/coastline.jpg}"
 mkdir -p "$CONF" "$WALL_DIR"
 
 msg() { echo "dwm-wall: $*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a dwm-wall "$*" 2>/dev/null; return 0; }
@@ -65,6 +68,13 @@ random_wall() {
 	themed_set "$pick"
 }
 
+default_wall() {
+	local f=$BUNDLED
+	[[ -f $f ]] || f="$WALL_DIR/$(basename "$BUNDLED")"
+	[[ -f $f ]] || { msg "the bundled wallpaper is not installed (run install.sh again)"; return 1; }
+	themed_set "$f"
+}
+
 restore() {
 	local f
 	f=$(cat "$STATE" 2>/dev/null)
@@ -72,6 +82,8 @@ restore() {
 		set_wall "$f"
 	elif [[ -n $(list_walls | head -n1) ]]; then
 		random_wall
+	elif [[ -f $BUNDLED ]]; then
+		set_wall "$BUNDLED"
 	else
 		# nothing to show: fall back to the theme background color
 		local BG="#2e3440"
@@ -275,6 +287,7 @@ pick_basic() {
 case ${1:-pick} in
 	pick) pick ;;
 	random) random_wall ;;
+	default) default_wall ;;
 	restore) restore ;;
 	set)
 		[[ -n ${2:-} ]] || { echo "usage: dwm-wall set <file>" >&2; exit 1; }

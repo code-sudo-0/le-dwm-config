@@ -98,3 +98,10 @@ format-prefix = "@I_THEME@"
 format-prefix-foreground = ${colors.accent}
 click-left = @HOME@/.local/bin/dwm-theme pick
 click-right = @HOME@/.local/bin/dwm-bar pick
+
+[module/settings]
+type = custom/text
+content = "@I_SETTINGS@"
+content-foreground = ${colors.fg-dim}
+click-left = @HOME@/.local/bin/dwm-settings
+click-right = @HOME@/.local/bin/dwm-display

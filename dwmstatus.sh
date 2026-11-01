@@ -3,41 +3,27 @@
 #   running cat | connectivity | volume | brightness | battery | clock
 # The cat runs faster the harder your CPU works.
 # Deps: xorg-xsetroot, brightnessctl, wireplumber (wpctl), networkmanager (nmcli)
+#
+# Clicks: dwm tells dwm-status-click which character of this text was clicked; this script
+# writes where each item sits ($XDG_RUNTIME_DIR/dwmstatus.map) so wifi opens the network
+# settings, Bluetooth its manager, volume pavucontrol and the battery the power-profile menu.
 # Icons come from a Nerd Font (JetBrainsMono Nerd Font, set in dwm's config.h).
 
 TRACK=10          # how far the cat runs before looping
-# Items are joined with three spaces plus a zero-width space. dwm splits on the
-# zero-width space for clickable status items; the spaces are the visible gap.
-SEP="   "$'\u200b'
+SEP="   "
 pos=0
 frame=0
 cpu=0
 prev_total=0
 prev_idle=0
 
-bat="" vol="" bri="" net="" bt=""
+bat="" vol="" bri="" net="" bt="" prof=""
+export LC_ALL=C.UTF-8      # ${#str} must count characters: dwm-status-click maps clicks to them
+MAPFILE="${XDG_RUNTIME_DIR:-/tmp}/dwmstatus.map"
+last_map="" map=""
 last_slow=0
 last_net=0
 last_res=0
-
-# Clickable parts: every item of the status text gets an action name in this
-# file ("-" = not clickable). Items are separated by three spaces + a zero-width
-# space; dwm-statusclick reads the matching action when you click an item of
-# dwm's bar (network, Bluetooth, volume, battery).
-ACTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/dwmstatus.actions"
-mkdir -p "${ACTFILE%/*}" 2>/dev/null
-last_actions=""
-
-# one instance only (the old instance also writes WM_NAME, which would fight
-# with the click map if two copies ran)
-PIDFILE="${XDG_RUNTIME_DIR:-$HOME/.cache}/dwmstatus.pid"
-if [[ -f $PIDFILE ]] && kill -0 "$(<"$PIDFILE")" 2>/dev/null; then
-	echo "dwmstatus: already running (pid $(<"$PIDFILE"))" >&2
-	exit 0
-fi
-printf '%s\n' "$$" > "$PIDFILE" 2>/dev/null
-trap 'rm -f "$PIDFILE"' EXIT
-trap 'rm -f "$PIDFILE"; exit 0' TERM INT HUP
 
 # icons:  wifi   volume   mute   brightness   charging   clock
 ICON_WIFI=""
@@ -61,16 +47,14 @@ load_style() {
 load_style
 
 # CPU as busy threads / total, RAM and disk as used/total (shown when there is no second bar)
-res_ram="" res_disk=""
 read_res() {
 	local mt ma used d
 	mt=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
 	ma=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
 	used=$((mt - ma))
 	d=$(df -BG --output=used,size / 2>/dev/null | awk 'NR==2{gsub("G","");print $1"/"$2"G"}')
-	printf -v res_ram '%s%d.%d/%dG' "${ICON_RAM:+$ICON_RAM }" $((used / 1048576)) $((used * 10 / 1048576 % 10)) $(((mt + 524288) / 1048576))
-	res_disk=""
-	[[ -n $d ]] && res_disk="${ICON_DISK:+$ICON_DISK }${d}"
+	printf -v res '%s%d.%d/%dG' "${ICON_RAM:+$ICON_RAM }" $((used / 1048576)) $((used * 10 / 1048576 % 10)) $(((mt + 524288) / 1048576))
+	[[ -n $d ]] && res+="${SEP}${ICON_DISK:+$ICON_DISK }${d}"
 }
 
 read_cpu() {
@@ -152,6 +136,30 @@ read_bt() {
 	if ((n > 0)); then bt="${ICON_BT:+$ICON_BT }connected"; else bt="${ICON_BT:+$ICON_BT }on"; fi
 }
 
+# power profile (power-profiles-daemon): perf / bal / eco, shown next to the battery
+read_prof() {
+	local p
+	prof=""
+	command -v busctl >/dev/null 2>&1 || return 0
+	p=$(busctl --system get-property net.hadess.PowerProfiles /net/hadess/PowerProfiles \
+		net.hadess.PowerProfiles ActiveProfile 2>/dev/null) \
+		|| p=$(busctl --system get-property org.freedesktop.UPower.PowerProfiles \
+		/org/freedesktop/UPower/PowerProfiles org.freedesktop.UPower.PowerProfiles ActiveProfile 2>/dev/null) \
+		|| return 0
+	case $p in
+		*performance*) prof=perf ;;
+		*balanced*) prof=bal ;;
+		*power-saver*) prof=eco ;;
+	esac
+}
+
+# append one status item and remember which characters it covers (for clicks)
+seg() {
+	local start=${#out}
+	out+="$2"
+	map+="$1 $start ${#out}"$'\n'
+}
+
 draw_cat() {
 	local sprite lpad rpad
 	if ((frame % 2)); then sprite="=^.^="; else sprite="=^-^="; fi
@@ -164,46 +172,29 @@ while true; do
 	printf -v now '%(%s)T' -1
 
 	if ((now - last_slow >= 2)); then load_style; read_slow; last_slow=$now; fi
-	if ((now - last_net >= 5)); then read_net; read_bt; last_net=$now; fi
+	if ((now - last_net >= 5)); then read_net; read_bt; read_prof; last_net=$now; fi
 
 	read_cpu
 	draw_cat
 	printf -v clock '%(%a %b %d  %I:%M %p)T' -1
 
-	# Build the status as separate segments so a click can be mapped back to
-	# one of them. The action names are written next to the text, in the same
-	# order, for dwm-statusclick.
-	segs=() acts=()
-	add_seg() { segs+=("$1"); acts+=("$2"); }
-
-	if ((SHOW_CAT)); then add_seg "$CAT" "-"; fi
+	out=" " map=""
+	if ((SHOW_CAT)); then seg cat "$CAT"; out+="$SEP"; fi
 	if ((SHOW_RES)); then
 		if ((now - last_res >= 5)); then read_res; last_res=$now; fi
 		t=$((cpu * NCPU / 10))
-		add_seg "${ICON_CPU:+$ICON_CPU }$((t / 10)).$((t % 10))/${NCPU}" "-"
-		[[ -n $res_ram ]] && add_seg "$res_ram" "-"
-		[[ -n $res_disk ]] && add_seg "$res_disk" "-"
+		seg res "${ICON_CPU:+$ICON_CPU }$((t / 10)).$((t % 10))/${NCPU}${SEP}${res}"; out+="$SEP"
 	fi
-	add_seg "$net" "net"
-	[[ -n $bt ]] && add_seg "$bt" "bt"
-	[[ -n $vol ]] && add_seg "$vol" "vol"
-	[[ -n $bri ]] && add_seg "$bri" "-"
-	[[ -n $bat ]] && add_seg "$bat" "bat"
-	add_seg "${ICON_CLOCK:+$ICON_CLOCK }${clock}" "-"
-
-	out=" ${segs[0]}"
-	for ((i = 1; i < ${#segs[@]}; i++)); do out+="${SEP}${segs[i]}"; done
-	out+=" "
-
-	# keep the click map in sync with the text (only rewritten when it changes)
-	new_actions=$(printf '%s\n' "${acts[@]}")
-	if [[ $new_actions != "$last_actions" ]]; then
-		if printf '%s\n' "${acts[@]}" > "$ACTFILE.tmp" 2>/dev/null; then
-			mv -f "$ACTFILE.tmp" "$ACTFILE" 2>/dev/null || true
-			last_actions=$new_actions
-		fi
+	seg net "$net"
+	[[ -n $bt ]] && { out+="$SEP"; seg bt "$bt"; }
+	[[ -n $vol ]] && { out+="$SEP"; seg vol "$vol"; }
+	[[ -n $bri ]] && { out+="$SEP"; seg bri "$bri"; }
+	[[ -n $bat ]] && { out+="$SEP"; seg bat "${bat}${prof:+ $prof}"; }
+	out+="$SEP"; seg clock "${ICON_CLOCK:+$ICON_CLOCK }${clock}"; out+=" "
+	if [[ $map != "$last_map" ]]; then
+		printf '%s' "$map" > "$MAPFILE.tmp" && mv -f "$MAPFILE.tmp" "$MAPFILE"
+		last_map=$map
 	fi
-
 	# if X is gone (session ended) stop instead of looping forever
 	xsetroot -name "$out" || exit 0
 

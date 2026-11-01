@@ -10,16 +10,23 @@ cat <<'EOF' | dmenu -l 45 -i -p "dwm keys" -fn "JetBrainsMono Nerd Font:size=11"
 	-nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" >/dev/null
 LAUNCH
   Super+Enter            terminal
-  Super+P                app launcher (dmenu), or the dock when the dock is on (Super+Shift+B -> Dock)
+  Super+P                app launcher (dmenu)
   Super+W                Firefox
   Super+E                Thunar file manager
   Super+Shift+/          this cheat sheet
 LOOK
+  Super+Shift+D          settings menu: display, theme, bar, wallpaper, gaps, opacity
   Super+Shift+T          pick a theme (dwm, bars, Thunar, terminal)
   Super+Shift+B          bar style: one/two bars, top/bottom, floating, icons, rounded windows
   Super+Shift+W          wallpaper picker: previews of pictures + live wallpapers, recolors theme
   Super+Ctrl+W           random wallpaper
   Super+Ctrl+Shift+W     live wallpaper picker (dwm-live)
+  bottom-bar gear        settings menu (right-click: display settings)
+DISPLAY
+  Super+Shift+D -> Display settings
+                         resolution / refresh rate, primary, rotation, extend / mirror
+                         "Save this layout for login" restores it at the next login
+  (terminal) dwm-display status | save | apply | reset
   (terminal) dwm-bar preset <name> | set KEY=VALUE   bar styles (dwm-bar help)
   (terminal) dwm-wall auto on|off   theme follows the wallpaper
   (terminal) dwm-theme from-image <file>   theme from an image or video
@@ -50,19 +57,13 @@ MONITORS
   Super+, / .            focus prev / next monitor
   Super+Shift+, / .      send window to prev / next monitor
 MOUSE
+  Click Wi-Fi / Bluetooth / volume / battery in the top bar: network, Blueman, pavucontrol, power profile menu
   Super+Left drag        move window
   Super+Right drag       resize window
   Super+Middle click     toggle floating
 BOTTOM BAR
   click the brush        pick a theme
   click the picture      pick a wallpaper (right-click: random)
-TOP BAR
-  click WiFi             network manager (nm-connection-editor)
-  click Bluetooth        blueman-manager
-  click volume           pavucontrol
-  click battery          performance profile (Performance/Balanced/Power Saver)
-  middle click status    open a terminal
-  click power button     power menu (suspend / log out / restart / shut down)
 MEDIA KEYS
   Volume up/down/mute, brightness up/down
 QUIT

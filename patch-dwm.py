@@ -12,6 +12,10 @@
              dwm bar can float, sit on top or bottom, or be shown next to polybar; config.h
              gets `#include "barcfg.h"`, its tags come from dwm-bar and gappx from BAR_GAP.
   7. bar key:  adds Super+Shift+B (dwm-bar) to an existing config.h.
+  8. settings key: adds Super+Shift+D (dwm-settings) to an existing config.h.
+  9. status clicks: a left click on the status text runs dwm-status-click with the index of the
+             clicked character (wifi, Bluetooth, sound, battery profiles); adds the
+             ClkStatusSegment enum, prototype and dispatch that config.h's binding needs.
 
 Every edit looks for exact text first and says so if it is not found; nothing is
 guessed. Files are backed up once as <file>.bak-le-dwm before the first change.
@@ -267,17 +271,20 @@ def patch_bar_key():
     print("patch-dwm: added Super+Shift+B (bar style menu) to config.h")
 
 
-def patch_dock_key():
+def patch_settings_key():
     cfg = read(CONFH)
-    if "dwm-dock" in cfg:
+    if "dwm-settings" in cfg:
         return
-    old = '\t{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },\n'
-    if old not in cfg:
-        print("patch-dwm: Super+P binding not found; dwm-dock key not added", file=sys.stderr)
+    pat = re.compile(r'^\t\{ MODKEY\|ShiftMask,\s+XK_t,\s+spawn,\s+SHCMD\("\$HOME/\.local/bin/dwm-theme pick"\) \},\n', re.M)
+    m = pat.search(cfg)
+    if not m:
+        print("patch-dwm: theme key not found in config.h; Super+Shift+D (dwm-settings) not added "
+              "(add { MODKEY|ShiftMask, XK_d, spawn, SHCMD(\"$HOME/.local/bin/dwm-settings\") }, yourself)",
+              file=sys.stderr)
         return
-    new = '\t{ MODKEY,                       XK_p,      spawn,          SHCMD("$HOME/.local/bin/dwm-dock") },\n'
-    write(CONFH, cfg.replace(old, new, 1))
-    print("patch-dwm: Super+P now runs dwm-dock (dock or regular menu)")
+    line = '\t{ MODKEY|ShiftMask,             XK_d,      spawn,          SHCMD("$HOME/.local/bin/dwm-settings") },\n'
+    write(CONFH, cfg[:m.end()] + line + cfg[m.end():])
+    print("patch-dwm: added Super+Shift+D (settings menu) to config.h")
 
 
 def patch_power_button():
@@ -322,6 +329,7 @@ def patch_live_key():
 
 
 FLASH_MARK = "/* le-dwm-config: empty-workspace flash */"
+
 FLASH_BLOCK = (
     "\tarrange(selmon);\n"
     "\t" + FLASH_MARK + "\n"
@@ -360,145 +368,6 @@ def patch_flash():
     print("patch-dwm: empty-workspace animation added")
 
 
-STATUS_MARK = "/* le-dwm-config: status click */"
-
-STATUS_FUNCS = STATUS_MARK + r"""
-static int
-status_segment(int x, int sx)
-{
-	char buf[sizeof stext], *p, *q;
-	int i = 0, w = 0;
-
-	if (x < sx)
-		return 0;
-	x -= sx;
-	memcpy(buf, stext, sizeof buf - 1);
-	buf[sizeof buf - 1] = '\0';
-	for (p = buf;; i++) {
-		/* dwmstatus joins the items with three spaces + a zero-width space.
-		 * Both are part of the drawn text, so count them: the spaces end the
-		 * segment, the zero-width space adds its advance before the next one. */
-		if ((q = strstr(p, "\xe2\x80\x8b")))
-			*q = '\0';
-		w += drw_fontset_getwidth(drw, p);
-		if (x < w || !q)
-			return i;
-		w += drw_fontset_getwidth(drw, "\xe2\x80\x8b");
-		p = q + 3;
-	}
-}
-
-void
-statusclick(const Arg *arg)
-{
-	char index[12];
-	Arg a = { .v = (const char *[]){ "/bin/sh", "-c",
-		"exec \"$HOME/.local/bin/dwm-statusclick\" \"$1\"", "dwm-statusclick", index, NULL } };
-
-	snprintf(index, sizeof index, "%d", arg->i);
-	spawn(&a);
-}
-
-"""
-
-# bumped when STATUS_FUNCS changes so an older applied copy is upgraded
-STATUS_VER = 'w += drw_fontset_getwidth(drw, "\\xe2\\x80\\x8b");'
-
-
-def patch_status_click():
-    """Clickable status items: click a segment of the bar's status text.
-
-    dwm measures the clicked segment and calls ~/.local/bin/dwm-statusclick with
-    its index; dwmstatus wrote the action names in the same order, so the WiFi,
-    Bluetooth, volume and battery items can open their own program.
-    """
-    src = read(DWMC)
-    cfg = read(CONFH)
-    if STATUS_MARK in src:
-        start = src.index(STATUS_MARK)
-        end = src.index("\nvoid\nbuttonpress", start)
-        if STATUS_VER in src[start:end]:
-            print("patch-dwm: status clicks already applied")
-        else:
-            # upgrade an older version (separator width was not counted)
-            src = src[:start] + STATUS_FUNCS + src[end:]
-            write(DWMC, src)
-            print("patch-dwm: status clicks upgraded")
-    else:
-        m = re.search(r"\nvoid\nbuttonpress\(XEvent \*e\)\n\{", src)
-        if not m:
-            print("patch-dwm: buttonpress() not found; status clicks not added", file=sys.stderr)
-            return
-        src = src[:m.start()] + "\n" + STATUS_FUNCS + src[m.start():]
-
-        # enum: add ClkStatusSegment next to ClkStatusText
-        em = re.search(r"^enum \{[^\n]*\bClkStatusText\b[^\n]*$", src, re.M)
-        if not em:
-            print("patch-dwm: click enum not found; status clicks not added", file=sys.stderr)
-            return
-        line = em.group(0)
-        if "ClkStatusSegment" not in line:
-            newline = re.sub(r"\bClkStatusText\b", "ClkStatusText, ClkStatusSegment", line, count=1)
-            src = src[:em.start()] + newline + src[em.end():]
-
-        # prototypes (config.h references statusclick() before its definition)
-        pm = re.search(r"^static void buttonpress\(XEvent \*e\);\n", src, re.M)
-        if not pm:
-            print("patch-dwm: buttonpress() declaration not found; status clicks not added",
-                  file=sys.stderr)
-            return
-        proto = ("static int status_segment(int x, int sx);\n"
-                 "static void statusclick(const Arg *arg);\n")
-        src = src[:pm.end()] + proto + src[pm.end():]
-
-        # buttonpress: remember which status segment was clicked.
-        # dwm 6.5 uses braces here; the systray/power patch flattens them.
-        cond_re = r"(selmon->ww - \(int\)TEXTW\(stext\) \+ lrpad - 2(?: - stw(?: - pw)?)?)"
-        bm = re.search(r"else if \(ev->x > " + cond_re + r"\) \{\n(\t+)click = ClkStatusText;\n\t+\}", src)
-        if not bm:
-            bm = re.search(r"else if \(ev->x > " + cond_re + r"\)\n(\t+)click = ClkStatusText;", src)
-        if not bm:
-            print("patch-dwm: status-text click test not found; status clicks not added",
-                  file=sys.stderr)
-            return
-        cond, ind = bm.group(1), bm.group(2)
-        repl = ("else if (ev->x > %s) {\n"
-                "%sif (ev->button == Button1) {\n"
-                "%s\tclick = ClkStatusSegment;\n"
-                "%s\targ.i = status_segment(ev->x, %s);\n"
-                "%s} else\n"
-                "%s\tclick = ClkStatusText;\n"
-                "%s}" % (cond, ind, ind, ind, cond, ind, ind, ind))
-        src = src[:bm.start()] + repl + src[bm.end():]
-
-        # dispatch: give statusclick() the segment index
-        old = ("buttons[i].func(click == ClkTagBar && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);")
-        new = ("buttons[i].func((click == ClkTagBar && buttons[i].arg.i == 0) || "
-               "click == ClkStatusSegment ? &arg : &buttons[i].arg);")
-        if old in src:
-            src = src.replace(old, new, 1)
-
-        if "ClkStatusSegment" not in src or "arg.i = status_segment" not in src:
-            print("patch-dwm: status click patch could not be completed; left alone", file=sys.stderr)
-            return
-        write(DWMC, src)
-        print("patch-dwm: status clicks added")
-
-    # config.h: the actual Button1 binding
-    if "ClkStatusSegment" not in cfg:
-        bm = re.search(r"^\t\{ ClkStatusText,[^\n]*\n", cfg, re.M)
-        if not bm:
-            bm = re.search(r"^\t\{ ClkWinTitle,[^\n]*\n", cfg, re.M)
-        if bm:
-            line = ("\t{ ClkStatusSegment,       0,              Button1,        "
-                    "statusclick,    {0} },\n")
-            cfg = cfg[:bm.end()] + line + cfg[bm.end():]
-            write(CONFH, cfg)
-            print("patch-dwm: added the status-click binding to config.h")
-        else:
-            print("patch-dwm: could not add the status-click binding to config.h", file=sys.stderr)
-
-
 def patch_systray_geometry():
     """The bar now sits inside the work area (wx/ww), so a systray patch must follow it too."""
     src = read(DWMC)
@@ -521,6 +390,188 @@ def patch_systray_geometry():
     print("patch-dwm: systray follows the floating bar")
 
 
+STATUS_MARK = "/* le-dwm-config: status click */"
+
+STATUS_FUNCS = STATUS_MARK + r"""
+static int statusx = -1;   /* where the status text starts inside the bar window */
+
+void
+statusclick(const Arg *arg)
+{
+	char buf[512], index[16];
+	int n = (int)strlen(stext), j = 0, k, chars = 0, rel = arg->i - statusx;
+	Arg a;
+
+	if (statusx < 0 || rel < 0)
+		return;
+	while (j < n) {   /* count the characters that end before the click */
+		k = j + 1;
+		while (k < n && ((unsigned char)stext[k] & 0xC0) == 0x80)
+			k++;
+		if (k >= (int)sizeof buf)
+			break;
+		memcpy(buf, stext, k);
+		buf[k] = '\0';
+		if ((int)TEXTW(buf) - lrpad > rel)
+			break;
+		j = k;
+		chars++;
+	}
+	snprintf(index, sizeof index, "%d", chars);
+	a.v = (const char *[]){ "/bin/sh", "-c",
+		"exec \"$HOME/.local/bin/dwm-status-click\" \"$0\" 2>/dev/null", index, NULL };
+	spawn(&a);
+}
+
+"""
+
+# bumped when STATUS_FUNCS changes so an older applied copy is upgraded
+STATUS_VER = "rel = arg->i - statusx;"
+
+
+def status_ensure(src):
+    """Add statusx, the ClkStatusSegment enum, prototype and dispatch."""
+    # an older status_segment() prototype is no longer needed
+    src = src.replace("static int status_segment(int x, int sx);\n", "", 1)
+
+    if ("ClkStatusSegment" in src and "arg.i = ev->x" in src
+            and "static void statusclick(const Arg *arg);" in src
+            and re.search(r"^[ \t]*statusx = \(", src, re.M)):
+        return src, None
+
+    # statusx: where the status text starts (set just before it is drawn)
+    if not re.search(r"^[ \t]*statusx = \(", src, re.M):
+        draw = re.search(r"\n([ \t]*)(drw_text\(drw, ([^;]*?), 0, tw, bh, ([^;]*?), stext, 0\);)", src)
+        if not draw:
+            return None, "drawbar() status text not found"
+        ind = draw.group(1)
+        src = (src[:draw.start()] + "\n" + ind + "statusx = (" + draw.group(3) + ") + ("
+               + draw.group(4) + ");\n" + ind + draw.group(2) + src[draw.end():])
+
+    # enum: ClkStatusSegment next to ClkStatusText
+    em = re.search(r"^enum \{[^\n]*\bClkStatusText\b[^\n]*$", src, re.M)
+    if not em:
+        return None, "click enum not found"
+    line = em.group(0)
+    if "ClkStatusSegment" not in line:
+        newline = re.sub(r"\bClkStatusText\b", "ClkStatusText, ClkStatusSegment", line, count=1)
+        src = src[:em.start()] + newline + src[em.end():]
+
+    # prototype (config.h references statusclick() before its definition)
+    if "static void statusclick(const Arg *arg);" not in src:
+        pm = re.search(r"^static void buttonpress\(XEvent \*e\);\n", src, re.M)
+        if not pm:
+            return None, "buttonpress() declaration not found"
+        src = src[:pm.end()] + "static void statusclick(const Arg *arg);\n" + src[pm.end():]
+
+    # buttonpress: a left click on the status text becomes a ClkStatusSegment click.
+    # dwm 6.5 uses braces here; other patches flatten them.
+    cond_re = (r"(selmon->ww - \(int\)TEXTW\(stext\)"
+               r"(?: \+ lrpad - 2(?: - stw(?: - pw)?)?)?)")
+    patterns = [
+        # an older status_segment() version
+        re.compile(r"([ \t]*)else if \(ev->x > " + cond_re + r"\) \{\n"
+                   r"[ \t]*if \(ev->button == Button1\) \{\n"
+                   r"[ \t]*click = ClkStatusSegment;\n"
+                   r"[ \t]*arg\.i = status_segment\([^\n]*\);\n"
+                   r"[ \t]*\} else\n"
+                   r"[ \t]*click = ClkStatusText;\n"
+                   r"[ \t]*\}"),
+        # already upgraded
+        re.compile(r"([ \t]*)else if \(ev->x > " + cond_re + r"\) \{\n"
+                   r"[ \t]*if \(ev->button == Button1\) \{\n"
+                   r"[ \t]*click = ClkStatusSegment;\n"
+                   r"[ \t]*arg\.i = ev->x;\n"
+                   r"[ \t]*\} else\n"
+                   r"[ \t]*click = ClkStatusText;\n"
+                   r"[ \t]*\}"),
+        # braced stock line
+        re.compile(r"([ \t]*)else if \(ev->x > " + cond_re + r"\) \{\n"
+                   r"[ \t]*click = ClkStatusText;\n"
+                   r"[ \t]*\}"),
+        # flattened stock line
+        re.compile(r"([ \t]*)else if \(ev->x > " + cond_re + r"\)\n"
+                   r"[ \t]*click = ClkStatusText;"),
+    ]
+    for pat in patterns:
+        m = pat.search(src)
+        if m:
+            ind, cond = m.group(1), m.group(2)
+            repl = ("%selse if (ev->x > %s) {\n"
+                    "%s\tif (ev->button == Button1) {\n"
+                    "%s\t\tclick = ClkStatusSegment;\n"
+                    "%s\t\targ.i = ev->x;\n"
+                    "%s\t} else\n"
+                    "%s\t\tclick = ClkStatusText;\n"
+                    "%s}" % (ind, cond, ind, ind, ind, ind, ind, ind))
+            src = src[:m.start()] + repl + src[m.end():]
+            break
+    else:
+        return None, "status-text click test not found"
+
+    # dispatch: give statusclick() the click x
+    old = ("buttons[i].func(click == ClkTagBar && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);")
+    new = ("buttons[i].func((click == ClkTagBar && buttons[i].arg.i == 0) || "
+           "click == ClkStatusSegment ? &arg : &buttons[i].arg);")
+    if old in src:
+        src = src.replace(old, new, 1)
+
+    if "ClkStatusSegment" not in src or "arg.i = ev->x" not in src:
+        return None, "status click patch could not be completed"
+    return src, None
+
+
+def patch_status_click():
+    """Clickable status items: click a segment of the bar's status text.
+
+    dwm maps the clicked x to a character index and calls ~/.local/bin/dwm-status-click
+    with it; dwmstatus wrote where each item starts, so the WiFi, Bluetooth,
+    volume and battery items can open their own program.
+    """
+    src = read(DWMC)
+    cfg = read(CONFH)
+
+    # drop the direct-call hook of the first character-index version, if present
+    src = re.sub(r"\tif \(click == ClkStatusText && ev->button == Button1 && statusx >= 0\) \{\n"
+                 r"\t\tstatusclick\(ev->x\);\n\t\treturn;\n\t\}\n", "", src)
+
+    if STATUS_MARK in src:
+        start = src.index(STATUS_MARK)
+        end = src.index("\nvoid\nbuttonpress", start)
+        block = src[start:end]
+        if STATUS_VER in block and "statusclick(const Arg *arg)" in block:
+            print("patch-dwm: status clicks already applied")
+        else:
+            src = src[:start] + STATUS_FUNCS + src[end:]
+            print("patch-dwm: status clicks upgraded")
+    else:
+        m = re.search(r"\nvoid\nbuttonpress\(XEvent \*e\)\n\{", src)
+        if not m:
+            print("patch-dwm: buttonpress() not found; status clicks not added", file=sys.stderr)
+            return
+        src = src[:m.start()] + "\n" + STATUS_FUNCS + src[m.start():]
+        print("patch-dwm: status clicks added")
+
+    src, err = status_ensure(src)
+    if err:
+        print("patch-dwm: %s; status clicks not added" % err, file=sys.stderr)
+        return
+    write(DWMC, src)
+
+    # config.h: the actual Button1 binding
+    if "ClkStatusSegment" not in cfg:
+        bm = re.search(r"^\t\{ ClkStatusText,[^\n]*\n", cfg, re.M)
+        if not bm:
+            bm = re.search(r"^\t\{ ClkWinTitle,[^\n]*\n", cfg, re.M)
+        if bm:
+            line = ("\t{ ClkStatusSegment,       0,              Button1,        "
+                    "statusclick,    {0} },\n")
+            write(CONFH, cfg[:bm.end()] + line + cfg[bm.end():])
+            print("patch-dwm: added the status-click binding to config.h")
+        else:
+            print("patch-dwm: could not add the status-click binding to config.h", file=sys.stderr)
+
+
 if not os.path.isfile(DWMC):
     print("patch-dwm.py: %s not found" % DWMC, file=sys.stderr)
     sys.exit(1)
@@ -535,7 +586,7 @@ patch_power_button()
 patch_power_text()
 patch_live_key()
 patch_bar_key()
-patch_dock_key()
+patch_settings_key()
 patch_flash()
 patch_status_click()
 if bars_ok:
