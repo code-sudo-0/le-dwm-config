@@ -271,3 +271,11 @@ With `dwm-wall auto on`, each change also recolors the whole setup from the vide
 you do not need your own xwinwrap line in any startup script. Needs `mpv` (installed by `install.sh`) and
 `xwinwrap` from the AUR (`yay -S xwinwrap-git`). Open the picker with `Super+Ctrl+Shift+W` (added to your existing `config.h` by `patch-dwm.sh`, which
 `install.sh` runs) or by middle-clicking the picture in the bottom bar.
+
+## Have fun
+
+Just have fun with it, and fork it to make it better.
+
+Made possible by Claude and me.
+
+TikTok: [@d4m14n.7](https://www.tiktok.com/@d4m14n.7)
