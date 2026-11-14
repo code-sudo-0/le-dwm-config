@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+# niri-dock - the compact application dock at the bottom of the niri screen.
+#
+# The dock is a small waybar bar (generated config) with app icons on both
+# sides of a launcher button in the middle. This is the niri version of
+# dwm-dock.
+#
+#   niri-dock start            generate + start the dock (runs at login)
+#   niri-dock restart          regenerate + restart the dock
+#   niri-dock toggle           show/hide the dock
+#   niri-dock menu             run / pin / unpin applications (Super+P)
+#   niri-dock pin <app.desktop>
+#   niri-dock unpin <app.desktop>
+#   niri-dock generate         only regenerate ~/.config/waybar/config-bottom.jsonc
+#
+# Pinned apps are stored in ~/.config/niri/dock-apps (one .desktop file per
+# line). Click the launcher to run an app or pin/unpin one; right-click an
+# icon to unpin it.
+set -u
+
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+APPS="$CONF/niri/dock-apps"
+CFG="$CONF/waybar/config-bottom.jsonc"
+STYLE="$CONF/waybar/style-bottom.css"
+PATTERN='waybar.*config-bottom\.jsonc'
+
+say() { printf '%s\n' "$*"; }
+warn() { echo "niri-dock: $*" >&2; }
+
+# ---------------------------------------------------------------- pick menus
+
+menu() {
+	local prompt=$1 input
+	shift
+	if (( $# > 0 )); then
+		input=$(printf '%s\n' "$@")
+	else
+		input=$(cat)
+	fi
+	[[ -n $input ]] || return 1
+	if command -v fuzzel >/dev/null 2>&1; then
+		printf '%s\n' "$input" | fuzzel --dmenu --prompt "$prompt  "
+	elif command -v rofi >/dev/null 2>&1; then
+		printf '%s\n' "$input" | rofi -dmenu -p "$prompt"
+	elif command -v dmenu >/dev/null 2>&1; then
+		printf '%s\n' "$input" | dmenu -i -p "$prompt"
+	else
+		return 1
+	fi
+}
+
+# ---------------------------------------------------------------- dock config
+
+seed_apps() {
+	[[ -s $APPS ]] && return
+	mkdir -p "$(dirname "$APPS")"
+	: > "$APPS"
+	local c f
+	for c in kitty.desktop firefox.desktop thunar.desktop code-oss.desktop code.desktop; do
+		for f in /usr/share/applications "$HOME/.local/share/applications"; do
+			if [[ -r $f/$c ]]; then
+				echo "$c" >> "$APPS"
+				break
+			fi
+		done
+	done
+}
+
+generate() {
+	seed_apps
+	mkdir -p "$(dirname "$CFG")"
+	python3 - "$APPS" "$CFG" <<'PY' || return 1
+import json
+import os
+import re
+import shlex
+import sys
+
+apps_file, cfg_file = sys.argv[1], sys.argv[2]
+home = os.path.expanduser("~")
+dirs = [
+    "/usr/share/applications",
+    home + "/.local/share/applications",
+    "/var/lib/flatpak/exports/share/applications",
+    home + "/.local/share/flatpak/exports/share/applications",
+]
+
+GLYPHS = [
+    (("kitty", "alacritty", "terminal", "konsole", "xterm", "foot"), "\uf120"),
+    (("firefox", "chromium", "chrome", "brave", "browser", "web", "epiphany"), "\uf269"),
+    (("thunar", "nautilus", "dolphin", "files", "pcmanfm", "nemo"), "\uf07b"),
+    (("code", "vscode", "vscodium", "editor", "nvim", "vim", "cursor"), "\uf121"),
+    (("discord", "chat", "telegram", "signal", "slack", "element"), "\uf086"),
+    (("music", "spotify", "audacious", "rhythmbox", "mpv"), "\uf001"),
+    (("video", "vlc", "player", "celluloid"), "\uf008"),
+    (("game", "steam", "lutris"), "\uf11b"),
+    (("settings", "control", "pavucontrol", "blueman"), "\uf013"),
+]
+
+def find_desktop(base):
+    for d in dirs:
+        path = os.path.join(d, base)
+        if os.path.isfile(path):
+            return path
+    return None
+
+def parse_desktop(path):
+    name = exec_cmd = None
+    in_main = False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                line = raw.rstrip("\n")
+                if line.startswith("["):
+                    in_main = line.strip() == "[Desktop Entry]"
+                    continue
+                if not in_main or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key == "Name" and name is None:
+                    name = value.strip()
+                elif key == "Exec" and exec_cmd is None:
+                    exec_cmd = re.sub(r"%[fFuUdDnNickvm]", "", value).strip()
+    except OSError:
+        return None, None
+    return name, exec_cmd
+
+def glyph_for(name, base):
+    haystack = (name or "") + " " + base
+    low = haystack.lower()
+    for words, glyph in GLYPHS:
+        if any(w in low for w in words):
+            return glyph
+    initial = (name or base or "?").strip()[:1].upper()
+    return initial or "\uf111"
+
+entries = []
+if os.path.isfile(apps_file):
+    with open(apps_file, encoding="utf-8", errors="replace") as fh:
+        bases = [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+else:
+    bases = []
+
+seen = set()
+for base in bases:
+    if base in seen:
+        continue
+    seen.add(base)
+    path = find_desktop(base)
+    if not path:
+        continue
+    name, cmd = parse_desktop(path)
+    if not cmd:
+        continue
+    entries.append({
+        "base": base,
+        "name": name or base.removesuffix(".desktop"),
+        "exec": cmd,
+        "glyph": glyph_for(name, base),
+    })
+
+n = len(entries)
+left_count = (n + 1) // 2
+left = list(range(left_count))
+right = list(range(left_count, n))
+width = max(124, 88 + n * 36)
+
+config = {
+    "layer": "top",
+    "position": "bottom",
+    "height": 42,
+    "width": width,
+    "margin-bottom": 8,
+    "spacing": 2,
+    "modules-left": [f"custom/app{i}" for i in left],
+    "modules-center": ["custom/launcher"],
+    "modules-right": [f"custom/app{i}" for i in right],
+    "custom/launcher": {
+        "format": "\U000f003b",
+        "tooltip": False,
+        "on-click": "niri-dock menu",
+        "on-click-right": "niri-dock menu",
+    },
+}
+
+for i, entry in enumerate(entries):
+    config[f"custom/app{i}"] = {
+        "format": entry["glyph"],
+        "tooltip": True,
+        "tooltip-format": entry["name"],
+        "on-click": entry["exec"],
+        "on-click-right": "niri-dock unpin " + shlex.quote(entry["base"]),
+    }
+
+tmp = cfg_file + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(config, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+os.replace(tmp, cfg_file)
+print(f"niri-dock: {n} app(s), width {width}px")
+PY
+}
+
+# ---------------------------------------------------------------- start/stop
+
+running() {
+	pgrep -f "$PATTERN" >/dev/null 2>&1
+}
+
+stop() {
+	local pid
+	for pid in $(pgrep -f "$PATTERN" 2>/dev/null); do
+		kill "$pid" 2>/dev/null || true
+	done
+}
+
+start() {
+	command -v waybar >/dev/null 2>&1 || { warn "waybar is not installed"; return 1; }
+	generate || { warn "could not generate the dock config"; return 1; }
+	if running; then
+		return 0
+	fi
+	[[ -r $STYLE ]] || warn "missing $STYLE (waybar will use its default style)"
+	setsid waybar -c "$CFG" -s "$STYLE" >/dev/null 2>&1 &
+}
+
+# ---------------------------------------------------------------- actions
+
+pin_app() {
+	local base=${1:-}
+	[[ -n $base ]] || { warn "usage: niri-dock pin <app.desktop>"; return 1; }
+	[[ $base == *.desktop ]] || base="$base.desktop"
+	mkdir -p "$(dirname "$APPS")"
+	grep -qxF "$base" "$APPS" 2>/dev/null || printf '%s\n' "$base" >> "$APPS"
+}
+
+unpin_app() {
+	local base=${1:-}
+	[[ -n $base ]] || { warn "usage: niri-dock unpin <app.desktop>"; return 1; }
+	[[ -s $APPS ]] || return 0
+	grep -vxF "$base" "$APPS" > "$APPS.tmp" || true
+	mv "$APPS.tmp" "$APPS"
+}
+
+list_desktops() {
+	python3 - <<'PY'
+import os, re
+home = os.path.expanduser("~")
+dirs = ["/usr/share/applications", home + "/.local/share/applications"]
+seen = set()
+out = []
+for d in dirs:
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        continue
+    for base in names:
+        if not base.endswith(".desktop") or base in seen:
+            continue
+        seen.add(base)
+        try:
+            with open(os.path.join(d, base), encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        if "NoDisplay=true" in text:
+            continue
+        main = text.split("[Desktop Entry]", 1)
+        if len(main) < 2:
+            continue
+        body = main[1].split("[", 1)[0]
+        name = None
+        for line in body.splitlines():
+            if line.startswith("Name=") and name is None:
+                name = line[5:].strip()
+        if name:
+            out.append((name, base))
+for name, base in sorted(out, key=lambda x: x[0].lower()):
+    print(f"{name}\t{base}")
+PY
+}
+
+app_menu() {
+	local choice sel base
+	choice=$(menu "Dock" "Run application" "Pin application to dock" "Unpin application" "Restart dock") || return 0
+	case $choice in
+		"Run application")
+			if command -v fuzzel >/dev/null 2>&1; then
+				fuzzel >/dev/null 2>&1 &
+			elif command -v rofi >/dev/null 2>&1; then
+				rofi -show drun >/dev/null 2>&1 &
+			else
+				dmenu_run >/dev/null 2>&1 &
+			fi
+			;;
+		"Pin application to dock")
+			sel=$(list_desktops | menu "Pin") || return 0
+			[[ -n ${sel:-} ]] || return 0
+			base=$(printf '%s\n' "$sel" | cut -f2)
+			[[ -n $base ]] && pin_app "$base"
+			;;
+		"Unpin application")
+			[[ -s $APPS ]] || return 0
+			sel=$(while IFS= read -r base; do
+				name=$(list_desktops | awk -F'\t' -v b="$base" '$2==b{print $1; exit}')
+				printf '%s\t%s\n' "${name:-$base}" "$base"
+			done < "$APPS" | menu "Unpin")
+			[[ -n ${sel:-} ]] || return 0
+			base=$(printf '%s\n' "$sel" | cut -f2)
+			[[ -n $base ]] && unpin_app "$base"
+			;;
+		"Restart dock")
+			stop
+			sleep 0.2
+			start
+			;;
+		*)
+			return 0
+			;;
+	esac
+
+	# regenerate + restart if the running dock needs to show the change
+	if [[ $choice == "Pin application to dock" || $choice == "Unpin application" ]]; then
+		stop
+		sleep 0.2
+		start
+	fi
+}
+
+case "${1:-start}" in
+	start)
+		start
+		;;
+	restart)
+		stop
+		sleep 0.2
+		start
+		;;
+	toggle)
+		if running; then
+			stop
+		else
+			start
+		fi
+		;;
+	generate)
+		generate
+		;;
+	menu)
+		app_menu
+		;;
+	pin)
+		shift
+		pin_app "${1:-}" || exit 1
+		stop; sleep 0.2; start
+		;;
+	unpin)
+		shift
+		unpin_app "${1:-}" || exit 1
+		stop; sleep 0.2; start
+		;;
+	*)
+		warn "usage: niri-dock [start|restart|toggle|generate|menu|pin <app.desktop>|unpin <app.desktop>]"
+		exit 1
+		;;
+esac

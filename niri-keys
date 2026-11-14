@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# niri-keys - show the niri key bindings.
+#
+# Inside a niri session this opens niri's built-in hotkey overlay (the same
+# thing Super+Shift+Slash does). Outside a session it prints the sheet below
+# in a pager.
+set -u
+
+SHEET="${XDG_CONFIG_HOME:-$HOME/.config}/niri/keys.txt"
+
+if command -v niri >/dev/null 2>&1 && niri msg version >/dev/null 2>&1; then
+	exec niri msg action show-hotkey-overlay
+fi
+
+[[ -r $SHEET ]] || { echo "niri-keys: no niri session and $SHEET is missing" >&2; exit 1; }
+if command -v less >/dev/null 2>&1; then
+	exec less -R "$SHEET"
+fi
+cat "$SHEET"

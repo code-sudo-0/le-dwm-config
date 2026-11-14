@@ -1,0 +1,44 @@
+le-dwm-config - niri keys (Super = Mod)
+
+Windows and columns
+  Super+Return          terminal (kitty)
+  Super+W               browser (Firefox)
+  Super+E               files (Thunar)
+  Super+P               launcher / dock menu
+  Super+J / Super+K     focus window down / up
+  Super+H / Super+L     shrink / grow the focused column
+  Super+I               next column width preset
+  Super+D               previous column width preset
+  Super+Shift+Return    maximize the focused column (zoom)
+  Super+Shift+C         close the focused window
+  Super+F               toggle floating
+  Super+M               maximize column
+  Super+Space           cycle column width
+  Super+Shift+Space     toggle floating
+  Super+BracketLeft     consume / expel window left
+  Super+BracketRight    consume / expel window right
+  Super+0               overview
+  Super+Tab             previous workspace
+
+Workspaces (like dwm tags)
+  Super+1 .. Super+9    focus workspace 1-9
+  Super+Shift+1 .. 9    move the column to workspace 1-9
+  Super+Page Up/Down    previous / next workspace
+  Super+Wheel Up/Down   previous / next workspace
+
+Monitors
+  Super+Comma / Period          focus monitor left / right
+  Super+Shift+Comma / Period    move column to monitor left / right
+
+System
+  Super+B               show / hide the bars
+  Super+Shift+B         bar menu
+  Super+Shift+T         theme picker
+  Super+Shift+W         wallpaper picker
+  Super+Ctrl+W          random wallpaper
+  Super+Shift+S         screenshot (region, to clipboard and disk)
+  Super+Shift+Slash     this key sheet
+  Super+Shift+Q         quit niri (confirmation)
+  Print                 screenshot of the whole screen
+
+Media keys work as usual (volume, mute, brightness).

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# niri-bars - start, restart or toggle the two floating waybar bars.
+#
+#   niri-bars start      start the top status bar and the bottom dock
+#   niri-bars restart    restart both bars
+#   niri-bars toggle     show/hide both bars (Super+B)
+#   niri-bars menu       small menu (Super+Shift+B)
+set -u
+
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+TOP_CFG="$CONF/waybar/config-top.jsonc"
+TOP_STYLE="$CONF/waybar/style-top.css"
+TOP_PATTERN='waybar.*config-top\.jsonc'
+
+say() { printf '%s\n' "$*"; }
+warn() { echo "niri-bars: $*" >&2; }
+
+top_running() {
+	pgrep -f "$TOP_PATTERN" >/dev/null 2>&1
+}
+
+start_top() {
+	if top_running; then
+		return 0
+	fi
+	if [[ ! -r $TOP_CFG ]]; then
+		warn "missing $TOP_CFG (run the installer)"
+		return 1
+	fi
+	command -v waybar >/dev/null 2>&1 || { warn "waybar is not installed"; return 1; }
+	setsid waybar -c "$TOP_CFG" -s "$TOP_STYLE" >/dev/null 2>&1 &
+}
+
+start_all() {
+	start_top
+	niri-dock start 2>/dev/null || "$HOME/.local/bin/niri-dock" start 2>/dev/null || warn "could not start the dock"
+}
+
+restart_all() {
+	pkill -x waybar 2>/dev/null || true
+	sleep 0.3
+	start_all
+}
+
+toggle_all() {
+	# waybar hides/shows itself on SIGUSR1; both instances listen
+	pkill -USR1 -x waybar 2>/dev/null || true
+}
+
+menu() {
+	local prompt=$1 input=$2 sel
+	if command -v fuzzel >/dev/null 2>&1; then
+		sel=$(printf '%s\n' "$input" | fuzzel --dmenu --prompt "$prompt  ")
+	elif command -v rofi >/dev/null 2>&1; then
+		sel=$(printf '%s\n' "$input" | rofi -dmenu -p "$prompt")
+	else
+		sel=$(printf '%s\n' "$input" | dmenu -i -p "$prompt")
+	fi
+	printf '%s\n' "${sel:-}"
+}
+
+bar_menu() {
+	local choice
+	choice=$(menu "Bars" $'Restart bars\nToggle bars\nDock applications\nTheme picker\nWallpaper picker')
+	case $choice in
+		"Restart bars") restart_all; say "bars restarted" ;;
+		"Toggle bars") toggle_all ;;
+		"Dock applications") niri-dock menu ;;
+		"Theme picker") niri-theme pick ;;
+		"Wallpaper picker") niri-wall pick ;;
+		*) return 0 ;;
+	esac
+}
+
+case "${1:-start}" in
+	start) start_all ;;
+	restart) restart_all ;;
+	toggle) toggle_all ;;
+	menu) bar_menu ;;
+	*) warn "usage: niri-bars [start|restart|toggle|menu]"; exit 1 ;;
+esac

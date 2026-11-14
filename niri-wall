@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# niri-wall - wallpaper manager for niri (swaybg).
+#
+#   niri-wall pick             choose a wallpaper (Super+Shift+W)
+#   niri-wall random           pick a random one (Super+Ctrl+W)
+#   niri-wall set <path>       use one file
+#   niri-wall restore          restore the saved wallpaper (runs at login)
+#
+# Uses the same ~/Pictures/wallpapers folder as dwm, so both sessions share
+# the wallpapers.
+set -u
+
+WALL_DIR="${WALL_DIR:-$HOME/Pictures/wallpapers}"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/niri"
+STATE="$CONF/wallpaper"
+
+die() { echo "niri-wall: $*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+
+is_image() {
+	case "${1,,}" in
+		*.jpg|*.jpeg|*.png|*.webp|*.bmp|*.gif|*.avif) return 0 ;;
+	esac
+	return 1
+}
+
+list_walls() {
+	local f
+	[[ -d $WALL_DIR ]] || return 0
+	while IFS= read -r -d '' f; do
+		is_image "$f" && printf '%s\n' "$f"
+	done < <(find "$WALL_DIR" -maxdepth 1 -type f -print0 | sort -z)
+}
+
+start_swaybg() {
+	local file=$1
+	if ! command -v swaybg >/dev/null 2>&1; then
+		die "swaybg is not installed (run the installer, or: sudo pacman -S swaybg)"
+	fi
+	[[ -r $file ]] || die "cannot read wallpaper: $file"
+
+	pkill -x swaybg 2>/dev/null || true
+	sleep 0.2
+	setsid swaybg -m fill -i "$file" >/dev/null 2>&1 &
+	mkdir -p "$CONF" 2>/dev/null || true
+	printf '%s\n' "$file" > "$STATE"
+	say "wallpaper: $file"
+}
+
+pick_wall() {
+	local walls sel
+	walls=$(list_walls)
+	[[ -n $walls ]] || die "no pictures in $WALL_DIR (put some there first)"
+	if command -v fuzzel >/dev/null 2>&1; then
+		sel=$(printf '%s\n' "$walls" | fuzzel --dmenu --prompt "Wallpaper  ")
+	elif command -v rofi >/dev/null 2>&1; then
+		sel=$(printf '%s\n' "$walls" | rofi -dmenu -p "Wallpaper")
+	else
+		sel=$(printf '%s\n' "$walls" | dmenu -i -p "Wallpaper")
+	fi
+	[[ -n ${sel:-} ]] || exit 0
+	start_swaybg "$sel"
+}
+
+case "${1:-restore}" in
+	pick) pick_wall ;;
+	random)
+		walls=$(list_walls)
+		[[ -n $walls ]] || die "no pictures in $WALL_DIR"
+		start_swaybg "$(printf '%s\n' "$walls" | shuf -n 1)"
+		;;
+	set)
+		shift
+		[[ -n ${1:-} ]] || die "usage: niri-wall set <path>"
+		start_swaybg "$1"
+		;;
+	restore)
+		if [[ -s $STATE ]]; then
+			start_swaybg "$(<"$STATE")"
+		else
+			walls=$(list_walls)
+			if [[ -n $walls ]]; then
+				start_swaybg "$(printf '%s\n' "$walls" | head -1)"
+			else
+				say "niri-wall: no saved wallpaper and $WALL_DIR is empty"
+			fi
+		fi
+		;;
+	*) die "usage: niri-wall [pick|random|set <path>|restore]" ;;
+esac
