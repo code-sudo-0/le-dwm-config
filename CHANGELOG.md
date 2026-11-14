@@ -2,6 +2,10 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- Installer now runs `sudo pacman -Syu` before installing packages, so a stale database no longer
+  causes 404s (e.g. when installing waybar for niri).
+- Fixed a false "dwm did NOT build" error: `dwm -v` exits with status 1, which `pipefail` treated as
+  a failed build even though `make install` succeeded.
 - Niri (Wayland) support: `niri/config.kdl` mirrors the dwm look - 8 px gaps, a 2 px focus ring,
   rounded windows and the same Super key bindings.
 - Floating top bar (waybar): workspace icons, focused window title, tray, network, Bluetooth, volume,

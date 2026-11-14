@@ -69,7 +69,8 @@ The installer opens a menu:
 6. **Quit**
 
 After Install or Update it returns to the same menu. **Run Update every day or so** to keep the
-dotfiles current. A wallpaper can still be passed directly:
+dotfiles current. Both Install options run `sudo pacman -Syu` first, so an old package database
+cannot 404 on versions the mirror has already removed. A wallpaper can still be passed directly:
 `./install.sh ~/Pictures/wallpaper.jpg`.
 
 Then log out and pick the **dwm** or **Niri** session, or run `startx` from a TTY for dwm.

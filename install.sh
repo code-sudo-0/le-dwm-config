@@ -32,11 +32,27 @@ fi
 
 # ------------------------------------------------------------------ dwm (X11)
 
+# Refresh the package databases before installing anything. Without this a stale
+# database points at package versions the mirror has already deleted (HTTP 404).
+sync_packages() {
+	if [[ ${DWM_SKIP_PACKAGES:-0} == 1 ]]; then
+		say "==> Skipping package sync (DWM_SKIP_PACKAGES=1)"
+		return 0
+	fi
+	echo "==> Syncing package databases and upgrading (pacman -Syu)"
+	if ! sudo pacman -Syu; then
+		warn "pacman -Syu failed; package installs may still hit 404s. Fix your mirrors, then re-run."
+		return 1
+	fi
+}
+
 install_packages() {
 	if [[ ${DWM_SKIP_PACKAGES:-0} == 1 ]]; then
 		say "==> Skipping packages (DWM_SKIP_PACKAGES=1)"
 		return 0
 	fi
+
+	sync_packages || warn "continuing with the existing package databases"
 
 	echo "==> Installing packages"
 	sudo pacman -S --needed base-devel git libx11 libxft libxinerama libxext \
@@ -151,8 +167,14 @@ install_dwm_theme() {
 
 	# dwm must exist and start before we point a login session at it: a missing dwm is a grey screen.
 	echo "==> Checking the dwm build"
-	if ! make -C "$DWM_SRC" PREFIX="$HOME/.local" clean install >"$CONF/build.log" 2>&1 \
-		|| ! "$BIN/dwm" -v 2>&1 | grep -q '^dwm-'; then
+	local build_ok=1 version=""
+	if make -C "$DWM_SRC" PREFIX="$HOME/.local" clean install >"$CONF/build.log" 2>&1; then
+		# dwm -v prints its version but exits with status 1, so do not use a
+		# pipeline here: with pipefail that always looked like a failed build.
+		version="$("$BIN/dwm" -v 2>&1 || true)"
+		[[ $version == dwm-* ]] && build_ok=0
+	fi
+	if (( build_ok != 0 )); then
 		echo
 		echo "!! dwm did NOT build, so I am not setting up the login session (you would get a grey screen)."
 		echo "!! Last lines of $CONF/build.log:"
@@ -161,7 +183,7 @@ install_dwm_theme() {
 		echo "Send me those lines, or run:  bash $REPO_DIR/dwm-doctor"
 		return 1
 	fi
-	echo "dwm built: $("$BIN/dwm" -v 2>&1)"
+	echo "dwm built: $version"
 
 	echo "==> Terminal theme (kitty)"
 	local kc="$HOME/.config/kitty/kitty.conf"
@@ -223,14 +245,14 @@ install_niri_packages() {
 	fi
 
 	echo "==> Installing niri packages"
+	sync_packages || warn "continuing with the existing package databases"
 	local pkg failed=0
 	for pkg in niri waybar swaybg mako fuzzel grim slurp wl-clipboard \
 		brightnessctl xdg-desktop-portal-gtk; do
 		if ! sudo pacman -S --needed --noconfirm "$pkg"; then
 			warn "could not install $pkg"
-			if [[ $pkg == niri || $pkg == waybar ]]; then
-				failed=1
-			fi
+			# niri is the session itself; the rest can be added later.
+			[[ $pkg == niri ]] && failed=1
 		fi
 	done
 
@@ -287,6 +309,9 @@ install_niri() {
 	install_niri_packages || return 1
 	install_niri_scripts
 	install_niri_config
+
+	command -v waybar >/dev/null 2>&1 \
+		|| warn "waybar is not installed: the bars will not start (sudo pacman -S waybar)"
 
 	echo
 	echo "Done. Log out and choose the 'Niri' session on the login screen."
