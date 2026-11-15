@@ -2,6 +2,12 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- NixOS support: `nixos/le-dwm.nix` (also `nixosModules.default` in `flake.nix`) installs the programs,
+  fonts and a `le-dwm` login session; `./install.sh` detects NixOS, skips pacman/sudo steps and builds
+  dwm inside a nix dev shell (`le-devrun`, `nix/devshell/flake.nix`) so the libraries are not garbage
+  collected. The module was evaluated against current nixpkgs, but a full build was not run.
+- The dock and app lookup now read `XDG_DATA_DIRS` (plus NixOS, Flatpak and per-user locations), so
+  apps and icons are found outside `/usr/share`.
 - Niri: macOS-style dock - a floating glass pill with real app icons (read from each app's .desktop
   file), a divider and the launcher, hover highlight and lift. Gaps are now 14 px and window corners
   14 px, so windows no longer touch the bars.

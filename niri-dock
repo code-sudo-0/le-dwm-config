@@ -51,13 +51,25 @@ menu() {
 
 # ---------------------------------------------------------------- dock config
 
+# every directory that can hold .desktop files (also NixOS and Flatpak locations)
+app_dirs() {
+	local d IFS=:
+	for d in "${XDG_DATA_HOME:-$HOME/.local/share}" ${XDG_DATA_DIRS:-/usr/local/share:/usr/share} \
+		/run/current-system/sw/share "$HOME/.nix-profile/share" "/etc/profiles/per-user/${USER:-$(id -un)}/share" \
+		/var/lib/flatpak/exports/share "$HOME/.local/share/flatpak/exports/share"; do
+		[[ -d $d/applications ]] && printf '%s\n' "$d/applications"
+	done
+	return 0
+}
+
+
 seed_apps() {
 	[[ -s $APPS ]] && return
 	mkdir -p "$(dirname "$APPS")"
 	: > "$APPS"
 	local c f
 	for c in kitty.desktop firefox.desktop thunar.desktop code-oss.desktop code.desktop; do
-		for f in /usr/share/applications "$HOME/.local/share/applications"; do
+		for f in $(app_dirs); do
 			if [[ -r $f/$c ]]; then
 				echo "$c" >> "$APPS"
 				break
@@ -77,13 +89,21 @@ import shlex
 import sys
 
 apps_file, cfg_file = sys.argv[1], sys.argv[2]
-home = os.path.expanduser("~")
-dirs = [
-    "/usr/share/applications",
-    home + "/.local/share/applications",
-    "/var/lib/flatpak/exports/share/applications",
-    home + "/.local/share/flatpak/exports/share/applications",
-]
+def data_dirs():
+    """XDG data dirs plus the NixOS, Flatpak and per-user locations."""
+    home = os.path.expanduser("~")
+    cand = [os.environ.get("XDG_DATA_HOME") or home + "/.local/share"]
+    cand += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    cand += ["/run/current-system/sw/share", home + "/.nix-profile/share",
+             "/etc/profiles/per-user/" + os.environ.get("USER", "") + "/share",
+             "/var/lib/flatpak/exports/share", home + "/.local/share/flatpak/exports/share"]
+    out = []
+    for d in cand:
+        if d and d not in out:
+            out.append(d)
+    return out
+
+dirs = [d + "/applications" for d in data_dirs()]
 
 GLYPHS = [
     (("kitty", "alacritty", "terminal", "konsole", "xterm", "foot"), "\uf120"),
@@ -104,13 +124,7 @@ def find_desktop(base):
             return path
     return None
 
-ICON_ROOTS = [
-    home + "/.local/share/icons",
-    "/usr/share/icons",
-    "/usr/share/pixmaps",
-    "/var/lib/flatpak/exports/share/icons",
-    home + "/.local/share/flatpak/exports/share/icons",
-]
+ICON_ROOTS = [d + "/icons" for d in data_dirs()] + [d + "/pixmaps" for d in data_dirs()]
 SIZES = ["256x256", "128x128", "96x96", "64x64", "48x48", "512x512", "scalable"]
 
 def find_icon(icon):
@@ -289,8 +303,21 @@ unpin_app() {
 list_desktops() {
 	python3 - <<'PY'
 import os, re
-home = os.path.expanduser("~")
-dirs = ["/usr/share/applications", home + "/.local/share/applications"]
+def data_dirs():
+    """XDG data dirs plus the NixOS, Flatpak and per-user locations."""
+    home = os.path.expanduser("~")
+    cand = [os.environ.get("XDG_DATA_HOME") or home + "/.local/share"]
+    cand += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    cand += ["/run/current-system/sw/share", home + "/.nix-profile/share",
+             "/etc/profiles/per-user/" + os.environ.get("USER", "") + "/share",
+             "/var/lib/flatpak/exports/share", home + "/.local/share/flatpak/exports/share"]
+    out = []
+    for d in cand:
+        if d and d not in out:
+            out.append(d)
+    return out
+
+dirs = [d + "/applications" for d in data_dirs()]
 seen = set()
 out = []
 for d in dirs:

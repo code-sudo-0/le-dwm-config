@@ -49,7 +49,9 @@ status bar, a compact bottom dock, 8 px gaps, rounded windows and the same theme
 | `niri-theme`, `niri-wall` | niri theme and wallpaper pickers (share dwm's theme files/folder) |
 | `niri-dock`, `niri-bars` | bottom application dock, start/restart/toggle the bars |
 | `niri-keys` | searchable list of every niri key, read from `config.kdl` (`Super+Shift+/`) |
-| `install.sh` | installer / updater menu (dwm and niri) |
+| `install.sh` | installer / updater menu (dwm and niri; detects NixOS) |
+| `flake.nix`, `nixos/le-dwm.nix` | NixOS module: packages, fonts and login sessions |
+| `nix/devshell/`, `le-devrun` | NixOS build shell for dwm (C compiler + X11 headers) |
 
 ## Install
 
@@ -78,6 +80,45 @@ If the packaged `dwm` is installed it can shadow the build: `sudo pacman -R dwm`
 
 Scripted flags: `--install-dwm`, `--install-niri`, `--update-dwm`, `--update-niri` (the old
 `--install` / `--update` still mean dwm).
+
+## NixOS
+
+NixOS has no `pacman` and no `/usr`, so it works in two steps: a small NixOS module installs the
+programs, fonts and login sessions, then `./install.sh` (it detects NixOS) writes the dotfiles to
+your home folder exactly as on other distros, so themes, bar styles and wallpapers still change at
+runtime with the usual keys.
+
+1. Add the module to your system config, then rebuild.
+
+   Classic `/etc/nixos/configuration.nix`:
+   ```nix
+   imports = [ /home/YOU/le-dwm-config/nixos/le-dwm.nix ];
+   programs.le-dwm.enable = true;
+   programs.le-dwm.niri.enable = true;   # only if you want niri (Wayland)
+   ```
+   Flake-based system:
+   ```nix
+   inputs.le-dwm.url = "github:code-sudo-0/le-dwm-config";
+   # in your nixosSystem modules:
+   modules = [ le-dwm.nixosModules.default { programs.le-dwm.enable = true; programs.le-dwm.niri.enable = true; } ];
+   ```
+   ```
+   sudo nixos-rebuild switch
+   ```
+2. Run `./install.sh` and pick Install dwm or Install Niri. Log out and choose **le-dwm** (X11) or
+   **niri** on the login screen.
+
+Notes:
+- dwm is compiled inside a small nix shell (`nix/devshell/flake.nix`, run through `le-devrun`), which
+  also happens whenever you change themes. The shell is kept as a profile under
+  `~/.local/state/le-dwm`, so `nix-collect-garbage` will not delete the libraries dwm uses.
+  Flakes are switched on for that command automatically.
+- The module turns on NetworkManager, Bluetooth + Blueman, power-profiles-daemon and UPower with
+  `mkDefault`, because the bar's click actions use them. Override any of them in your own config
+  (e.g. `services.power-profiles-daemon.enable = false;` if you use TLP).
+- Sound: enable PipeWire yourself (`services.pipewire = { enable = true; pulse.enable = true; };`).
+- Updating: `git pull` (or the installer's Update entries) and `sudo nixos-rebuild switch` when the
+  module changed.
 
 ## Niri (Wayland)
 

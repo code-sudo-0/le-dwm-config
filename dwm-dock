@@ -28,7 +28,7 @@ ensure_pinned() {
 	seed() {
 		for c in "$@"; do
 			local f
-			for base in /usr/share/applications "$HOME/.local/share/applications"; do
+			for base in $(app_dirs); do
 				f="$base/$c"
 				[[ -r $f ]] && { echo "$c" >> "$PINNED"; return 0; }
 			done
@@ -67,9 +67,20 @@ app_icon() {
 	esac
 }
 
+# every directory that can hold .desktop files (also NixOS and Flatpak locations)
+app_dirs() {
+	local d IFS=:
+	for d in "${XDG_DATA_HOME:-$HOME/.local/share}" ${XDG_DATA_DIRS:-/usr/local/share:/usr/share} \
+		/run/current-system/sw/share "$HOME/.nix-profile/share" "/etc/profiles/per-user/${USER:-$(id -un)}/share" \
+		/var/lib/flatpak/exports/share "$HOME/.local/share/flatpak/exports/share"; do
+		[[ -d $d/applications ]] && printf '%s\n' "$d/applications"
+	done
+	return 0
+}
+
 desktop_path() {
 	local base="$1"
-	for d in /usr/share/applications "$HOME/.local/share/applications"; do
+	for d in $(app_dirs); do
 		[[ -r "$d/$base" ]] && { echo "$d/$base"; return; }
 	done
 }
@@ -175,7 +186,7 @@ case "${1:-}" in
 			"Pin application to dock")
 				# pick a .desktop app
 				list=$(
-					for f in /usr/share/applications/*.desktop "$HOME/.local/share/applications"/*.desktop; do
+					for f in $(app_dirs | sed 's|$|/*.desktop|'); do
 						[[ -r $f ]] || continue
 						n=$(sed -n 's/^Name=//p' "$f" | head -1)
 						[[ -n $n ]] || continue

@@ -1,0 +1,30 @@
+#!/bin/sh
+# le-devrun - run a build command (make, gcc) with a C compiler and the X11 headers available.
+#
+#     le-devrun make -C ~/dwm PREFIX=$HOME/.local clean install
+#
+# On Arch and most distros the headers are already installed, so this just runs the command.
+# On NixOS they are not, so the command runs inside a small nix dev shell
+# (~/.config/dwm-theme/nixenv/flake.nix, copied there by install.sh). The shell is kept as a
+# profile under ~/.local/state/le-dwm so garbage collection cannot delete the libraries dwm links to.
+if [ ! -e /etc/NIXOS ] || [ -n "${LE_DEVRUN_INNER:-}" ]; then
+	exec "$@"
+fi
+
+ENV_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-theme/nixenv"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/le-dwm"
+mkdir -p "$STATE"
+
+if [ ! -f "$ENV_DIR/flake.nix" ]; then
+	here=$(dirname "$0")
+	if [ -f "$here/nix/devshell/flake.nix" ]; then
+		mkdir -p "$ENV_DIR"
+		cp "$here/nix/devshell/flake.nix" "$ENV_DIR/flake.nix"
+	else
+		echo "le-devrun: $ENV_DIR/flake.nix is missing; run ./install.sh again" >&2
+		exit 1
+	fi
+fi
+
+exec nix --extra-experimental-features 'nix-command flakes' \
+	develop "path:$ENV_DIR" --profile "$STATE/devshell" --command "$@"

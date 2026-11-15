@@ -30,11 +30,38 @@ if [[ $EUID -eq 0 ]]; then
 	exit 1
 fi
 
+# NixOS has no pacman and no /usr: programs come from the system configuration
+# (nixos/le-dwm.nix), and dwm is built inside a small nix dev shell (le-devrun).
+NIXOS=0
+if [[ -e /etc/NIXOS ]] || grep -qx 'ID=nixos' /etc/os-release 2>/dev/null; then NIXOS=1; fi
+
+nix_check() {   # nix_check <dwm|niri>
+	local need c missing=()
+	case $1 in
+		dwm)  need="git python3 kitty dmenu feh picom polybar xrandr xsetroot xrdb maim xclip pgrep nix" ;;
+		*)    need="git python3 kitty niri waybar swaybg mako fuzzel grim slurp wl-copy brightnessctl" ;;
+	esac
+	echo "==> NixOS detected: programs come from your system configuration, not from this installer"
+	for c in $need; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
+	if (( ${#missing[@]} )); then
+		warn "missing programs: ${missing[*]}"
+		say "   Add the le-dwm module to your NixOS config, then run: sudo nixos-rebuild switch"
+		say "     imports = [ $REPO_DIR/nixos/le-dwm.nix ];"
+		say "     programs.le-dwm.enable = true;"
+		[[ $1 == niri ]] && say "     programs.le-dwm.niri.enable = true;"
+		say "   (flake users: see the NixOS section of the README). Continuing; things may be missing."
+	else
+		say "   all needed programs are present"
+	fi
+	return 0
+}
+
 # ------------------------------------------------------------------ dwm (X11)
 
 # Refresh the package databases before installing anything. Without this a stale
 # database points at package versions the mirror has already deleted (HTTP 404).
 sync_packages() {
+	(( NIXOS )) && return 0
 	if [[ ${DWM_SKIP_PACKAGES:-0} == 1 ]]; then
 		say "==> Skipping package sync (DWM_SKIP_PACKAGES=1)"
 		return 0
@@ -47,6 +74,7 @@ sync_packages() {
 }
 
 install_packages() {
+	if (( NIXOS )); then nix_check dwm; return 0; fi
 	if [[ ${DWM_SKIP_PACKAGES:-0} == 1 ]]; then
 		say "==> Skipping packages (DWM_SKIP_PACKAGES=1)"
 		return 0
@@ -99,6 +127,12 @@ install_dwm_source() {
 install_dwm_scripts() {
 	echo "==> Installing scripts to $BIN"
 	mkdir -p "$BIN"
+	install -m755 "$REPO_DIR/le-devrun"    "$BIN/le-devrun"
+	if (( NIXOS )); then   # build shell for dwm (C compiler + X11 headers), see le-devrun
+		mkdir -p "$CONF/nixenv"
+		cmp -s "$REPO_DIR/nix/devshell/flake.nix" "$CONF/nixenv/flake.nix" \
+			|| cp "$REPO_DIR/nix/devshell/flake.nix" "$CONF/nixenv/flake.nix"
+	fi
 	install -m755 "$REPO_DIR/dwmstatus.sh" "$BIN/dwmstatus"
 	install -m755 "$REPO_DIR/dwm-keys"     "$BIN/dwm-keys"
 	install -m755 "$REPO_DIR/dwm-quit"     "$BIN/dwm-quit"
@@ -114,7 +148,7 @@ install_dwm_scripts() {
 	install -m755 "$REPO_DIR/dwm-settings" "$BIN/dwm-settings"
 	install -m755 "$REPO_DIR/dwm-doctor"   "$BIN/dwm-doctor"
 	# ripple played when you switch to an empty workspace (a failed build only loses the effect)
-	gcc -O2 -o "$BIN/dwm-flash" "$REPO_DIR/dwm-flash.c" -lX11 -lXext \
+	"$BIN/le-devrun" gcc -O2 -o "$BIN/dwm-flash" "$REPO_DIR/dwm-flash.c" -lX11 -lXext \
 		|| warn "could not build dwm-flash: the empty-workspace animation will not play"
 	command -v xwinwrap >/dev/null 2>&1 || warn "xwinwrap not found: live wallpapers need it (AUR: yay -S xwinwrap-git)"
 	install -m755 "$REPO_DIR/dwm-palette"  "$BIN/dwm-palette"
@@ -168,7 +202,7 @@ install_dwm_theme() {
 	# dwm must exist and start before we point a login session at it: a missing dwm is a grey screen.
 	echo "==> Checking the dwm build"
 	local build_ok=1 version=""
-	if make -C "$DWM_SRC" PREFIX="$HOME/.local" clean install >"$CONF/build.log" 2>&1; then
+	if "$BIN/le-devrun" make -C "$DWM_SRC" PREFIX="$HOME/.local" clean install >"$CONF/build.log" 2>&1; then
 		# dwm -v prints its version but exits with status 1, so do not use a
 		# pipeline here: with pipefail that always looked like a failed build.
 		version="$("$BIN/dwm" -v 2>&1 || true)"
@@ -201,18 +235,22 @@ install_dwm_theme() {
 	# picom.conf (translucent bars, rounded windows, animations) was written by dwm-bar above
 
 	# battery menu: power-profiles-daemon must be running (CachyOS may already provide an equivalent)
-	if command -v powerprofilesctl >/dev/null 2>&1 && ! powerprofilesctl get >/dev/null 2>&1; then
+	if (( ! NIXOS )) && command -v powerprofilesctl >/dev/null 2>&1 && ! powerprofilesctl get >/dev/null 2>&1; then
 		sudo systemctl enable --now power-profiles-daemon 2>/dev/null \
 			|| warn "could not start power-profiles-daemon (battery menu needs it)"
 	fi
 }
 
 install_dwm_session() {
-	echo "==> Installing session entry (for display managers)"
-	sudo mkdir -p /usr/share/xsessions
-	printf '%s\n' '[Desktop Entry]' 'Name=dwm' 'Comment=Dynamic window manager' \
-		"Exec=$BIN/start-dwm" 'Type=Application' \
-		| sudo tee /usr/share/xsessions/dwm.desktop >/dev/null
+	if (( NIXOS )); then
+		echo "==> Session entry: provided by the NixOS module (shows up as 'le-dwm' on the login screen)"
+	else
+		echo "==> Installing session entry (for display managers)"
+		sudo mkdir -p /usr/share/xsessions
+		printf '%s\n' '[Desktop Entry]' 'Name=dwm' 'Comment=Dynamic window manager' \
+			"Exec=$BIN/start-dwm" 'Type=Application' \
+			| sudo tee /usr/share/xsessions/dwm.desktop >/dev/null
+	fi
 
 	echo "==> Writing ~/.xinitrc (for startx)"
 	printf '%s\n' "exec $BIN/start-dwm" > "$HOME/.xinitrc"
@@ -230,7 +268,11 @@ install_dwm_all() {
 	install_dwm_session
 
 	echo
-	echo "Done. Log out and choose the 'dwm' session, or run 'startx' from a TTY."
+	if (( NIXOS )); then
+		echo "Done. Log out and choose the 'le-dwm' session (needs programs.le-dwm.enable = true; in your NixOS config)."
+	else
+		echo "Done. Log out and choose the 'dwm' session, or run 'startx' from a TTY."
+	fi
 	echo "If the screen ever stays grey/black: Ctrl+Alt+F3, log in, run  bash $REPO_DIR/dwm-doctor  (log: ~/.local/state/dwm/session.log)."
 	echo "Put wallpapers in $WALL_DIR, then use Super+Shift+W (pictures and live wallpapers). Themes: Super+Shift+T."
 	echo "Settings (display, theme, bar, wallpaper, gaps, opacity): Super+Shift+D, or the gear on the bottom bar."
@@ -239,6 +281,7 @@ install_dwm_all() {
 # --------------------------------------------------------------- niri (Wayland)
 
 install_niri_packages() {
+	if (( NIXOS )); then nix_check niri; return 0; fi
 	if [[ ${DWM_SKIP_PACKAGES:-0} == 1 ]]; then
 		say "==> Skipping packages (DWM_SKIP_PACKAGES=1)"
 		return 0
@@ -313,7 +356,8 @@ install_niri() {
 		|| warn "waybar is not installed: the bars will not start (sudo pacman -S waybar)"
 
 	echo
-	echo "Done. Log out and choose the 'Niri' session on the login screen."
+	echo "Done. Log out and choose the 'niri' session on the login screen."
+	(( NIXOS )) && echo "(On NixOS niri comes from programs.le-dwm.niri.enable = true; or programs.niri.enable = true;.)"
 	echo "The top bar shows workspaces, window title and status; the dock is at the bottom."
 	echo "Super+P opens the launcher/dock menu, Super+Shift+T themes, Super+Shift+W wallpapers."
 	echo "Niri reloads ~/.config/niri/config.kdl automatically when you save it."
@@ -364,6 +408,7 @@ menu_header() {
 	echo "  le-dwm-config installer"
 	echo "  dwm on X11 or niri on Wayland - same look and keys."
 	echo "  Keep your dotfiles current: choose Update every day or so."
+	(( NIXOS )) && echo "  NixOS detected: programs come from nixos/le-dwm.nix (see README)."
 	echo "============================================================"
 	echo "  1) Install dwm    packages, dwm, bars, themes, session"
 	echo "  2) Install Niri   niri, waybar bars, dock, themes"
@@ -433,6 +478,9 @@ Scripted use:
   ./install.sh --update-dwm       update dwm
   ./install.sh --install-niri     install/repair niri
   ./install.sh --update-niri      update niri
+
+NixOS is detected automatically: packages are not installed by this script. Add the module in
+nixos/le-dwm.nix to your system config (README, "NixOS"), then run this installer as usual.
 
 Environment:
   FORCE_CONFIG=1              replace an existing ~/dwm/config.h (backed up)

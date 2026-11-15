@@ -215,7 +215,9 @@ EOF
 # Rebuild dwm so the new colors.h takes effect. Installs to ~/.local (no sudo).
 build_dwm() {
 	[[ -f $DWM_SRC/Makefile ]] || return 0
-	if make -C "$DWM_SRC" PREFIX="$HOME/.local" clean install >"$CONF/build.log" 2>&1; then
+	local runner=()
+	[[ -x $BIN/le-devrun ]] && runner=("$BIN/le-devrun")   # NixOS: builds inside the nix dev shell
+	if "${runner[@]}" make -C "$DWM_SRC" PREFIX="$HOME/.local" clean install >"$CONF/build.log" 2>&1; then
 		return 0
 	fi
 	msg "dwm build failed, see $CONF/build.log"
