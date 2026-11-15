@@ -155,6 +155,7 @@ install_dwm_scripts() {
 	install -m755 "$REPO_DIR/dwm-wall"     "$BIN/dwm-wall"
 	install -m755 "$REPO_DIR/dwm-live"     "$BIN/dwm-live"
 	install -m755 "$REPO_DIR/dwm-cpu"      "$BIN/dwm-cpu"
+	install -m755 "$REPO_DIR/dwm-uptime"   "$BIN/dwm-uptime"
 	install -m755 "$REPO_DIR/dwm-bar"      "$BIN/dwm-bar"
 	install -m755 "$REPO_DIR/dwm-dock"     "$BIN/dwm-dock"
 	install -m755 "$REPO_DIR/dwm-status-click" "$BIN/dwm-status-click"

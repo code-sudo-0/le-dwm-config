@@ -2,6 +2,11 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- Fixed on NixOS: open kitty windows now recolor when the theme changes (NixOS runs kitty as `.kitty-wrapped`,
+  so the reload signal never reached it); same for Thunar and waybar. Auto theme now reports why it failed
+  (notification + `~/.config/dwm-theme/auto-theme.log`) instead of failing silently.
+- Fixed the uptime item on the second bar ("invalid option -p" on NixOS): it now reads `/proc/uptime`
+  through the new `dwm-uptime`.
 - Installer updates detect the distro: NixOS runs `nix flake update le-dwm` + `nixos-rebuild switch`,
   Arch-based systems run `pacman -Syu`, anything else updates only the dotfiles. Asks first on a terminal;
   `SKIP_SYSTEM_UPDATE=1` skips it. The NixOS module looks up Thunar by its new top-level name.

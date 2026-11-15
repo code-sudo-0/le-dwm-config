@@ -51,7 +51,7 @@ set_kitty_opacity() {
 		printf '\nbackground_opacity %s\n' "$val" >> "$KITTY_CONF"
 	fi
 	# kitty reloads its config on SIGUSR1
-	pkill -SIGUSR1 -x kitty 2>/dev/null
+	{ pkill -SIGUSR1 -x kitty; pkill -SIGUSR1 -x .kitty-wrapped; } 2>/dev/null   # NixOS wraps kitty
 }
 
 auto_theme_state() {

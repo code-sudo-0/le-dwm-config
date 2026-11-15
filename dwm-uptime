@@ -1,0 +1,9 @@
+#!/bin/sh
+# dwm-uptime - uptime for the second bar, e.g. "2d 3h 14m" or "47m".
+# `uptime -p` is not available everywhere (NixOS' uptime rejects -p), /proc/uptime always is.
+awk '{
+	s = int($1); d = int(s / 86400); h = int((s % 86400) / 3600); m = int((s % 3600) / 60)
+	if (d > 0) printf "%dd %dh %dm\n", d, h, m
+	else if (h > 0) printf "%dh %dm\n", h, m
+	else printf "%dm\n", m
+}' /proc/uptime 2>/dev/null || echo "?"

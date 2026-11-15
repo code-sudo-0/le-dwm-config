@@ -170,7 +170,7 @@ binds {
     Mod+WheelScrollLeft { focus-column-left; }
 
     // ---- system --------------------------------------------------------
-    Mod+B { spawn "pkill" "-USR1" "-x" "waybar"; }
+    Mod+B { spawn-sh "pkill -USR1 -x waybar; pkill -USR1 -x .waybar-wrapped"; }
     Mod+Shift+B { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-bars menu"; }
     Mod+Shift+T { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-theme pick"; }
     Mod+Shift+W { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-wall pick"; }

@@ -67,7 +67,7 @@ label-warn-foreground = ${colors.red}
 
 [module/uptime]
 type = custom/script
-exec = uptime -p | sed 's/^up //'
+exec = @HOME@/.local/bin/dwm-uptime
 interval = 60
 format-prefix = "@I_UP@"
 format-prefix-foreground = ${colors.cyan}

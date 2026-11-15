@@ -37,14 +37,14 @@ start_all() {
 }
 
 restart_all() {
-	pkill -x waybar 2>/dev/null || true
+	pkill -x waybar 2>/dev/null; pkill -x .waybar-wrapped 2>/dev/null; true
 	sleep 0.3
 	start_all
 }
 
 toggle_all() {
 	# waybar hides/shows itself on SIGUSR1; both instances listen
-	pkill -USR1 -x waybar 2>/dev/null || true
+	pkill -USR1 -x waybar 2>/dev/null; pkill -USR1 -x .waybar-wrapped 2>/dev/null; true
 }
 
 menu() {

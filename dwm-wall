@@ -48,8 +48,14 @@ set_wall() {
 # (Not used by `restore`, so logging in never triggers a rebuild.)
 auto_theme() {
 	[[ -f $AUTO || ${DWM_FORCE_THEME:-0} == 1 ]] || return 0
-	if [[ -x $BIN/dwm-theme ]]; then "$BIN/dwm-theme" from-image "$1" >/dev/null 2>&1
-	elif command -v dwm-theme >/dev/null 2>&1; then dwm-theme from-image "$1" >/dev/null 2>&1
+	local t log="$CONF/auto-theme.log"
+	if [[ -x $BIN/dwm-theme ]]; then t=$BIN/dwm-theme
+	else t=$(command -v dwm-theme) || { msg "auto theme: dwm-theme is not installed"; return 1; }
+	fi
+	# keep the output so a failure is visible instead of the colors silently staying the same
+	if ! "$t" from-image "$1" >"$log" 2>&1; then
+		msg "auto theme failed: $(tail -n1 "$log") (full output: $log)"
+		return 1
 	fi
 }
 
