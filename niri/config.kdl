@@ -1,7 +1,7 @@
 // le-dwm-config - niri config that mirrors the dwm setup.
 //
 // The dwm install is still the default; this file gives the same feel on
-// Wayland: Super as the modifier, 8 px gaps, 2 px focus ring, a floating top
+// Wayland: Super as the modifier, 14 px gaps, 2 px focus ring, a floating top
 // status bar and a compact floating dock at the bottom.
 //
 // Colors are generated from the same theme files as dwm (niri-theme).
@@ -31,7 +31,8 @@ input {
 }
 
 layout {
-    gaps 8
+    // room between windows, screen edges and the floating bars
+    gaps 14
     center-focused-column "never"
     always-center-single-column
 
@@ -96,12 +97,12 @@ window-rule {
 
 // Rounded windows, like the picom corners in dwm.
 window-rule {
-    geometry-corner-radius 8
+    geometry-corner-radius 14
     clip-to-geometry true
 }
 
 binds {
-    // ---- dwm keys ------------------------------------------------------
+    // ---- windows and workspaces ----------------------------------------
     Mod+Return hotkey-overlay-title="Terminal: kitty" { spawn "kitty"; }
     Mod+W hotkey-overlay-title="Web: Firefox" { spawn "firefox"; }
     Mod+E hotkey-overlay-title="Files: Thunar" { spawn "thunar"; }
@@ -175,7 +176,7 @@ binds {
     Mod+Shift+W { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-wall pick"; }
     Mod+Ctrl+W { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-wall random"; }
     Mod+Shift+S { screenshot; }
-    Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+Shift+Slash hotkey-overlay-title="Show every key" { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-keys"; }
     Mod+Shift+Q { quit; }
     Print { screenshot-screen; }
 

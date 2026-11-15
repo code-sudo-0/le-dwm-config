@@ -45,10 +45,10 @@ status bar, a compact bottom dock, 8 px gaps, rounded windows and the same theme
 | `start-dwm`, `dwm-quit`, `dwm-power-menu` | session launcher, quit prompt, power menu |
 | `patch-dwm.sh`, `patch-dwm.py` | small checked patches to `dwm.c` / `config.h` |
 | `niri/config.kdl` | niri config with the dwm look and keys |
-| `niri/waybar/` | top status bar (`config-top.jsonc`, `style-top.css`) and dock style |
+| `niri/waybar/` | top status bar (`config-top.jsonc`, `style-top.css`) and macOS-style dock style |
 | `niri-theme`, `niri-wall` | niri theme and wallpaper pickers (share dwm's theme files/folder) |
 | `niri-dock`, `niri-bars` | bottom application dock, start/restart/toggle the bars |
-| `niri-keys` | niri key sheet / hotkey overlay |
+| `niri-keys` | searchable list of every niri key, read from `config.kdl` (`Super+Shift+/`) |
 | `install.sh` | installer / updater menu (dwm and niri) |
 
 ## Install
@@ -84,7 +84,7 @@ Scripted flags: `--install-dwm`, `--install-niri`, `--update-dwm`, `--update-nir
 **Install Niri** in the menu installs `niri`, `waybar`, `swaybg`, `mako` and the needed Wayland
 tools, then writes:
 
-- `~/.config/niri/config.kdl` - 8 px gaps, a 2 px focus ring, rounded windows, floating bars and
+- `~/.config/niri/config.kdl` - 14 px gaps, a 2 px focus ring, rounded windows, floating bars and
   dwm-style Super key bindings
 - `~/.config/waybar/config-top.jsonc` + `style-top.css` - floating top bar: workspace icons, window
   title, tray, network, Bluetooth, volume, backlight, battery and clock

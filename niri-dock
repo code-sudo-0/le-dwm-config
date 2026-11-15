@@ -104,8 +104,44 @@ def find_desktop(base):
             return path
     return None
 
+ICON_ROOTS = [
+    home + "/.local/share/icons",
+    "/usr/share/icons",
+    "/usr/share/pixmaps",
+    "/var/lib/flatpak/exports/share/icons",
+    home + "/.local/share/flatpak/exports/share/icons",
+]
+SIZES = ["256x256", "128x128", "96x96", "64x64", "48x48", "512x512", "scalable"]
+
+def find_icon(icon):
+    """Return a file path for an Icon= value, or None."""
+    if not icon:
+        return None
+    if os.path.isabs(icon):
+        return icon if os.path.isfile(icon) else None
+    exts = (".png", ".svg", ".xpm")
+    for root in ICON_ROOTS:
+        if root.endswith("pixmaps"):
+            for ext in exts:
+                p = os.path.join(root, icon + ext)
+                if os.path.isfile(p):
+                    return p
+            continue
+        try:
+            themes = sorted(os.listdir(root))
+        except OSError:
+            continue
+        themes = sorted(themes, key=lambda t: (t != "hicolor", t))
+        for theme in themes:
+            for size in SIZES:
+                for ext in (".png", ".svg"):
+                    p = os.path.join(root, theme, size, "apps", icon + ext)
+                    if os.path.isfile(p):
+                        return p
+    return None
+
 def parse_desktop(path):
-    name = exec_cmd = None
+    name = exec_cmd = icon = None
     in_main = False
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
@@ -121,9 +157,11 @@ def parse_desktop(path):
                     name = value.strip()
                 elif key == "Exec" and exec_cmd is None:
                     exec_cmd = re.sub(r"%[fFuUdDnNickvm]", "", value).strip()
+                elif key == "Icon" and icon is None:
+                    icon = value.strip()
     except OSError:
-        return None, None
-    return name, exec_cmd
+        return None, None, None
+    return name, exec_cmd, icon
 
 def glyph_for(name, base):
     haystack = (name or "") + " " + base
@@ -149,48 +187,54 @@ for base in bases:
     path = find_desktop(base)
     if not path:
         continue
-    name, cmd = parse_desktop(path)
+    name, cmd, icon = parse_desktop(path)
     if not cmd:
         continue
     entries.append({
         "base": base,
         "name": name or base.removesuffix(".desktop"),
         "exec": cmd,
+        "icon": find_icon(icon),
         "glyph": glyph_for(name, base),
     })
 
 n = len(entries)
-left_count = (n + 1) // 2
-left = list(range(left_count))
-right = list(range(left_count, n))
-width = max(124, 88 + n * 36)
+ICON = 46          # icon size in px
+CELL = ICON + 20   # icon + padding + margin, see style-bottom.css
+mods = [f"image#app{i}" if entries[i]["icon"] else f"custom/app{i}" for i in range(n)]
+mods.append("custom/sep")
+mods.append("custom/launcher")
+width = n * CELL + 2 * 14 + 14 + CELL + 12
 
 config = {
     "layer": "top",
     "position": "bottom",
-    "height": 42,
+    "height": ICON + 22,
     "width": width,
-    "margin-bottom": 8,
-    "spacing": 2,
-    "modules-left": [f"custom/app{i}" for i in left],
-    "modules-center": ["custom/launcher"],
-    "modules-right": [f"custom/app{i}" for i in right],
+    "margin-bottom": 10,
+    "spacing": 0,
+    "modules-center": mods,
+    "custom/sep": {"format": "", "tooltip": False},
     "custom/launcher": {
         "format": "\U000f003b",
-        "tooltip": False,
+        "tooltip": True,
+        "tooltip-format": "Apps",
         "on-click": "niri-dock menu",
         "on-click-right": "niri-dock menu",
     },
 }
 
 for i, entry in enumerate(entries):
-    config[f"custom/app{i}"] = {
-        "format": entry["glyph"],
+    common = {
         "tooltip": True,
         "tooltip-format": entry["name"],
         "on-click": entry["exec"],
         "on-click-right": "niri-dock unpin " + shlex.quote(entry["base"]),
     }
+    if entry["icon"]:
+        config[f"image#app{i}"] = dict(common, path=entry["icon"], size=ICON)
+    else:
+        config[f"custom/app{i}"] = dict(common, format=entry["glyph"])
 
 tmp = cfg_file + ".tmp"
 with open(tmp, "w", encoding="utf-8") as fh:

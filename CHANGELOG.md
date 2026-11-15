@@ -2,6 +2,11 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- Niri: macOS-style dock - a floating glass pill with real app icons (read from each app's .desktop
+  file), a divider and the launcher, hover highlight and lift. Gaps are now 14 px and window corners
+  14 px, so windows no longer touch the bars.
+- Niri: `Super+Shift+/` (or `niri-keys`) now lists every key from your real `config.kdl` in a
+  searchable menu, instead of niri's partial overlay. It updates itself when you add binds.
 - Installer now runs `sudo pacman -Syu` before installing packages, so a stale database no longer
   causes 404s (e.g. when installing waybar for niri).
 - Fixed a false "dwm did NOT build" error: `dwm -v` exits with status 1, which `pipefail` treated as

@@ -1,19 +1,176 @@
 #!/usr/bin/env bash
-# niri-keys - show the niri key bindings.
+# niri-keys - the complete list of keys niri responds to.
 #
-# Inside a niri session this opens niri's built-in hotkey overlay (the same
-# thing Super+Shift+Slash does). Outside a session it prints the sheet below
-# in a pager.
+#   niri-keys            searchable list (fuzzel/rofi), or a pager in a terminal
+#   niri-keys --print    print the list to the terminal
+#
+# The list is read straight from ~/.config/niri/config.kdl every time, so it
+# always matches the real binds {} block (niri's own overlay only shows a few).
 set -u
 
-SHEET="${XDG_CONFIG_HOME:-$HOME/.config}/niri/keys.txt"
+CONFIG="${NIRI_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl}"
+[[ -r $CONFIG ]] || { echo "niri-keys: cannot read $CONFIG" >&2; exit 1; }
 
-if command -v niri >/dev/null 2>&1 && niri msg version >/dev/null 2>&1; then
-	exec niri msg action show-hotkey-overlay
+render() {
+python3 - "$CONFIG" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+m = re.search(r"^binds\s*\{", text, re.M)
+if not m:
+    print("no binds block found")
+    sys.exit(0)
+
+# take the binds block by counting braces
+depth, i = 0, m.end() - 1
+for j in range(i, len(text)):
+    if text[j] == "{":
+        depth += 1
+    elif text[j] == "}":
+        depth -= 1
+        if depth == 0:
+            body = text[m.end():j]
+            break
+else:
+    body = text[m.end():]
+
+def pretty_key(k):
+    k = k.replace("Mod+", "Super+").replace("Page_Down", "PageDown").replace("Page_Up", "PageUp")
+    return k.replace("BracketLeft", "[").replace("BracketRight", "]").replace("Comma", ",") \
+            .replace("Period", ".").replace("Slash", "/").replace("Return", "Enter") \
+            .replace("WheelScrollDown", "Wheel down").replace("WheelScrollUp", "Wheel up") \
+            .replace("WheelScrollRight", "Wheel right").replace("WheelScrollLeft", "Wheel left")
+
+WORDS = {
+    "focus-window-down": "focus the window below",
+    "focus-window-up": "focus the window above",
+    "focus-column-left": "focus the column on the left",
+    "focus-column-right": "focus the column on the right",
+    "focus-workspace-previous": "back to the previous workspace",
+    "focus-workspace-down": "next workspace",
+    "focus-workspace-up": "previous workspace",
+    "move-column-to-workspace-down": "move the column to the next workspace",
+    "move-column-to-workspace-up": "move the column to the previous workspace",
+    "focus-monitor-left": "focus the monitor on the left",
+    "focus-monitor-right": "focus the monitor on the right",
+    "move-column-to-monitor-left": "move the column to the left monitor",
+    "move-column-to-monitor-right": "move the column to the right monitor",
+    "switch-preset-column-width": "cycle the column width (1/3, 1/2, 2/3)",
+    "switch-preset-column-width-back": "cycle the column width backwards",
+    "maximize-column": "maximize the column",
+    "close-window": "close the window",
+    "toggle-window-floating": "toggle floating",
+    "toggle-overview": "overview of all workspaces",
+    "consume-or-expel-window-left": "move the window into / out of the left column",
+    "consume-or-expel-window-right": "move the window into / out of the right column",
+    "show-hotkey-overlay": "niri's own hotkey overlay",
+    "screenshot": "screenshot a region",
+    "screenshot-screen": "screenshot the whole screen",
+    "screenshot-window": "screenshot the window",
+    "quit": "quit niri",
+    "fullscreen-window": "fullscreen",
+    "center-column": "center the column",
+}
+
+def describe(action, title):
+    if title:
+        return title
+    a = action.strip().rstrip(";").strip()
+    name, _, rest = a.partition(" ")
+    rest = rest.strip()
+    if name == "set-column-width":
+        return "make the column " + ("wider" if "+" in rest else "narrower")
+    if name == "focus-workspace":
+        return "go to workspace " + rest
+    if name == "move-column-to-workspace":
+        return "move the column to workspace " + rest
+    if name in ("spawn", "spawn-sh"):
+        cmd = " ".join(re.findall(r'"([^"]*)"', rest))
+        cmd = re.sub(r"PATH=\S+\s*", "", cmd).strip()
+        if "wpctl" in cmd and "volume" in cmd:
+            return "volume " + ("up" if "+" in cmd else "down")
+        if "wpctl" in cmd and "mute" in cmd:
+            return "mute the microphone" if "SOURCE" in cmd else "mute"
+        if "brightnessctl" in cmd:
+            return "brightness " + ("up" if "+" in cmd else "down")
+        if "pkill -USR1" in cmd:
+            return "show / hide the bars"
+        return "run " + cmd
+    return WORDS.get(name, name.replace("-", " "))
+
+section = "Keys"
+sections = []   # [name, [(key, text, action)]]
+cur = None
+for raw in body.splitlines():
+    line = raw.strip()
+    sm = re.match(r"//\s*-{2,}\s*(.+?)\s*-*$", line)
+    if sm:
+        section = sm.group(1)
+        cur = None
+        continue
+    if not line or line.startswith("//"):
+        continue
+    km = re.match(r'^([A-Za-z0-9_+]+)((?:\s+[a-z-]+=(?:"[^"]*"|\S+))*)\s*\{\s*(.*?)\s*\}\s*$', line)
+    if not km:
+        continue
+    key, props, action = km.groups()
+    tm = re.search(r'hotkey-overlay-title="([^"]*)"', props)
+    if cur is None:
+        cur = [section, []]
+        sections.append(cur)
+    cur[1].append((key, describe(action, tm.group(1) if tm else None), action))
+
+# collapse Super+1..9 style runs
+def collapse(items):
+    out, used = [], set()
+    for idx, (k, t, a) in enumerate(items):
+        if idx in used:
+            continue
+        mm = re.match(r"^(.*?)([1-9])$", k)
+        if mm and mm.group(2) == "1":
+            run = [idx]
+            for d in range(2, 10):
+                for jdx, (k2, t2, a2) in enumerate(items):
+                    if k2 == mm.group(1) + str(d):
+                        run.append(jdx)
+            if len(run) == 9:
+                used.update(run)
+                out.append((mm.group(1) + "1 .. 9", re.sub(r"\b1$", "1-9", t), a))
+                continue
+        out.append((k, t, a))
+    return out
+
+for name, items in sections:
+    print(name.upper())
+    for k, t, a in collapse(items):
+        print(f"  {pretty_key(k):<28} {t}")
+    print()
+PY
+}
+
+list=$(render)
+
+if [[ ${1:-} == --print || ! -t 1 && -z ${WAYLAND_DISPLAY:-} ]]; then
+	printf '%s\n' "$list"
+	exit 0
 fi
 
-[[ -r $SHEET ]] || { echo "niri-keys: no niri session and $SHEET is missing" >&2; exit 1; }
-if command -v less >/dev/null 2>&1; then
-	exec less -R "$SHEET"
+if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
+	if command -v fuzzel >/dev/null 2>&1; then
+		printf '%s\n' "$list" | fuzzel --dmenu --prompt "keys  " --width 70 --lines 24 >/dev/null
+		exit 0
+	elif command -v rofi >/dev/null 2>&1; then
+		printf '%s\n' "$list" | rofi -dmenu -p "keys" -l 24 >/dev/null
+		exit 0
+	fi
+	for t in kitty foot alacritty; do
+		if command -v "$t" >/dev/null 2>&1; then
+			tmp=$(mktemp)
+			printf '%s\n' "$list" > "$tmp"
+			exec "$t" -e less -R "$tmp"
+		fi
+	done
 fi
-cat "$SHEET"
+
+printf '%s\n' "$list" | ${PAGER:-less -R}

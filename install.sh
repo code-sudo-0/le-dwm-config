@@ -289,7 +289,6 @@ install_niri_config() {
 	mkdir -p "$NIRI_CONF" "$WAYBAR_CONF" "$HOME/.config/mako" "$HOME/Pictures/Screenshots"
 
 	install_managed "$REPO_DIR/niri/config.kdl"                "$NIRI_CONF/config.kdl"
-	install_managed "$REPO_DIR/niri/keys.txt"                  "$NIRI_CONF/keys.txt"
 	install_managed "$REPO_DIR/niri/waybar/config-top.jsonc"   "$WAYBAR_CONF/config-top.jsonc"
 	install_managed "$REPO_DIR/niri/waybar/style-top.css"      "$WAYBAR_CONF/style-top.css"
 	install_managed "$REPO_DIR/niri/waybar/style-bottom.css"   "$WAYBAR_CONF/style-bottom.css"
