@@ -49,6 +49,7 @@ status bar, a compact bottom dock, 8 px gaps, rounded windows and the same theme
 | `niri-theme`, `niri-wall` | niri theme and wallpaper pickers (share dwm's theme files/folder) |
 | `niri-dock`, `niri-bars` | bottom application dock, start/restart/toggle the bars |
 | `niri-keys` | searchable list of every niri key, read from `config.kdl` (`Super+Shift+/`) |
+| `niri-settings`, `niri-display`, `niri-size` | settings menu (`Super+Shift+D`), display settings, bar and dock size |
 | `install.sh` | installer / updater menu (dwm and niri; detects NixOS) |
 | `flake.nix`, `nixos/le-dwm.nix` | NixOS module: packages, fonts and login sessions |
 | `nix/devshell/`, `le-devrun` | NixOS build shell for dwm (C compiler + X11 headers) |
@@ -140,6 +141,34 @@ tools, then writes:
 
 The dock works like dwm's: click the launcher in the middle to run an app or pin/unpin one, and
 right-click an icon to unpin it. Pinned apps live in `~/.config/niri/dock-apps`.
+
+### Settings menu (`Super+Shift+D`, or the gear on the top bar)
+
+`niri-settings` is one menu for the whole desktop:
+
+| Entry | What it does |
+|-------|--------------|
+| Theme | choose a theme, or turn **Auto theme** on/off (shared with dwm: `dwm-wall auto`) |
+| Wallpaper | pick or random |
+| Bar and dock size | `compact`, `small`, `normal`, `large` (`niri-bars size compact` from a terminal) |
+| Display | per screen: resolution and refresh rate, scale, rotation, on/off (`niri-display`) |
+| Window gaps, Rounded corners | 0-24 px; saved to `~/.config/niri/settings.kdl` |
+| Terminal opacity | kitty `background_opacity` |
+| Bars and dock | show/hide, restart, dock apps |
+| Key list | every key from your `config.kdl` |
+
+Display changes apply at once and get 12 seconds to be confirmed (otherwise the old setting comes
+back, so a bad mode cannot leave you with a black screen). They are saved to
+`~/.config/niri/display.conf` and written to `display.kdl`, which `config.kdl` includes, so they
+survive restarts. `niri-display list` shows your screens and their modes.
+
+### Auto theme
+
+With **Auto theme** on, every wallpaper you set with `niri-wall` (`Super+Shift+W`, `Super+Ctrl+W`)
+builds a palette from the picture and recolors niri's focus ring, both bars, notifications and
+kitty - including terminals that are already open. Logging in does not recolor, only changing the
+wallpaper does. Turn it on in the settings menu or with `niri-wall auto on`; if a recolor fails you get
+a notification and the reason is in `~/.config/niri/auto-theme.log`.
 
 Useful commands: `niri-theme pick` (`Super+Shift+T`), `niri-wall pick` (`Super+Shift+W`),
 `niri-bars restart`, `niri-dock generate`. Niri reloads `config.kdl` automatically when you save it;

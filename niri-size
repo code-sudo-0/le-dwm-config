@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""niri-size - make the niri top bar and dock smaller or larger.
+
+  niri-size get              print the current size (compact, small, normal or large)
+  niri-size set <size>       save a size and regenerate the bar files
+  niri-size gen              regenerate ~/.config/waybar/gen/* from the installed bar files
+  niri-size scale            print the numeric scale (used by niri-dock)
+
+The installed bar files (config-top.jsonc, style-top.css, style-bottom.css) stay as they are;
+the scaled copies that waybar reads live in ~/.config/waybar/gen/. Restart the bars afterwards
+(`niri-bars restart`), which niri-settings does for you.
+"""
+import os
+import re
+import sys
+
+CONF = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+NIRI = os.path.join(CONF, "niri")
+WAYBAR = os.path.join(CONF, "waybar")
+GEN = os.path.join(WAYBAR, "gen")
+SETTINGS = os.path.join(NIRI, "bars.conf")
+
+SIZES = {"compact": 0.7, "small": 0.85, "normal": 1.0, "large": 1.2}
+
+
+def get_size():
+    try:
+        with open(SETTINGS, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("SIZE="):
+                    v = line.split("=", 1)[1].strip()
+                    if v in SIZES:
+                        return v
+    except OSError:
+        pass
+    return "normal"
+
+
+def set_size(name):
+    os.makedirs(NIRI, exist_ok=True)
+    lines = []
+    try:
+        with open(SETTINGS, encoding="utf-8") as fh:
+            lines = [ln for ln in fh if not ln.startswith("SIZE=")]
+    except OSError:
+        pass
+    lines.append("SIZE=%s\n" % name)
+    with open(SETTINGS, "w", encoding="utf-8") as fh:
+        fh.writelines(lines)
+
+
+def px(value, scale):
+    """scale a pixel length, never below 1 unless it was 0"""
+    if value == 0:
+        return 0
+    return max(1, int(value * scale + 0.5))
+
+
+def font_scale(scale):
+    """text shrinks more gently than the boxes around it"""
+    return 1 + (scale - 1) * 0.6
+
+
+def scale_css(text, scale):
+    text = text.replace('@import "colors.css";', '@import "../colors.css";')
+
+    def font(m):
+        return "%s%dpx" % (m.group(1), px(int(m.group(2)), font_scale(scale)))
+
+    def other(m):
+        return "%dpx" % px(int(m.group(1)), scale)
+
+    out = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("font-size"):
+            line = re.sub(r"(font-size:\s*)(\d+)px", font, line)
+        elif "@import" not in line:
+            line = re.sub(r"(\d+)px", other, line)
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+KEYS = "height|margin-top|margin-bottom|margin-left|margin-right|spacing|icon-size"
+
+
+def scale_json(text, scale):
+    def rep(m):
+        return "%s%d" % (m.group(1), px(int(m.group(2)), scale))
+    return re.sub(r'("(?:%s)"\s*:\s*)(\d+)' % KEYS, rep, text)
+
+
+def read(name):
+    with open(os.path.join(WAYBAR, name), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def write(name, data):
+    os.makedirs(GEN, exist_ok=True)
+    tmp = os.path.join(GEN, name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(data)
+    os.replace(tmp, os.path.join(GEN, name))
+
+
+def gen():
+    scale = SIZES[get_size()]
+    done = 0
+    for name, fn in (("config-top.jsonc", scale_json), ("style-top.css", scale_css),
+                     ("style-bottom.css", scale_css)):
+        try:
+            write(name, fn(read(name), scale))
+            done += 1
+        except OSError as exc:
+            print("niri-size: skipped %s (%s)" % (name, exc), file=sys.stderr)
+    return 0 if done else 1
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "get"
+    if cmd == "get":
+        print(get_size())
+    elif cmd == "scale":
+        print(SIZES[get_size()])
+    elif cmd == "set":
+        if len(argv) < 3 or argv[2] not in SIZES:
+            print("usage: niri-size set %s" % "|".join(SIZES), file=sys.stderr)
+            return 1
+        set_size(argv[2])
+        return gen()
+    elif cmd == "gen":
+        return gen()
+    else:
+        print(__doc__)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -172,6 +172,7 @@ binds {
     // ---- system --------------------------------------------------------
     Mod+B { spawn-sh "pkill -USR1 -x waybar; pkill -USR1 -x .waybar-wrapped"; }
     Mod+Shift+B { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-bars menu"; }
+    Mod+Shift+D hotkey-overlay-title="Settings menu" { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-settings"; }
     Mod+Shift+T { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-theme pick"; }
     Mod+Shift+W { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-wall pick"; }
     Mod+Ctrl+W { spawn-sh "PATH=$HOME/.local/bin:$PATH niri-wall random"; }
@@ -187,3 +188,7 @@ binds {
     XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "set" "5%+"; }
     XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "set" "5%-"; }
 }
+
+// Saved choices from the settings menu (Super+Shift+D). They come last so they override the values above.
+include optional=true "settings.kdl"
+include optional=true "display.kdl"

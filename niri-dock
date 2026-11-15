@@ -17,11 +17,13 @@
 # line). Click the launcher to run an app or pin/unpin one; right-click an
 # icon to unpin it.
 set -u
+export PATH="$HOME/.local/bin:$PATH"
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 APPS="$CONF/niri/dock-apps"
 CFG="$CONF/waybar/config-bottom.jsonc"
 STYLE="$CONF/waybar/style-bottom.css"
+GEN_STYLE="$CONF/waybar/gen/style-bottom.css"   # scaled by niri-size (bar and dock size setting)
 PATTERN='waybar.*config-bottom\.jsonc'
 
 say() { printf '%s\n' "$*"; }
@@ -81,7 +83,9 @@ seed_apps() {
 generate() {
 	seed_apps
 	mkdir -p "$(dirname "$CFG")"
-	python3 - "$APPS" "$CFG" <<'PY' || return 1
+	local scale
+	scale=$(niri-size scale 2>/dev/null || "$HOME/.local/bin/niri-size" scale 2>/dev/null || echo 1.0)
+	python3 - "$APPS" "$CFG" "$scale" <<'PY' || return 1
 import json
 import os
 import re
@@ -89,6 +93,15 @@ import shlex
 import sys
 
 apps_file, cfg_file = sys.argv[1], sys.argv[2]
+try:
+    SCALE = float(sys.argv[3])
+except (IndexError, ValueError):
+    SCALE = 1.0
+
+
+def sc(v):
+    return max(1, int(v * SCALE + 0.5))
+
 def data_dirs():
     """XDG data dirs plus the NixOS, Flatpak and per-user locations."""
     home = os.path.expanduser("~")
@@ -213,19 +226,19 @@ for base in bases:
     })
 
 n = len(entries)
-ICON = 46          # icon size in px
-CELL = ICON + 20   # icon + padding + margin, see style-bottom.css
+ICON = sc(46)                      # icon size in px
+CELL = ICON + 4 * sc(5)            # icon + padding + margin on both sides, see style-bottom.css
 mods = [f"image#app{i}" if entries[i]["icon"] else f"custom/app{i}" for i in range(n)]
 mods.append("custom/sep")
 mods.append("custom/launcher")
-width = n * CELL + 2 * 14 + 14 + CELL + 12
+width = n * CELL + 2 * sc(14) + sc(14) + CELL + sc(12)
 
 config = {
     "layer": "top",
     "position": "bottom",
-    "height": ICON + 22,
+    "height": ICON + sc(22),
     "width": width,
-    "margin-bottom": 10,
+    "margin-bottom": sc(10),
     "spacing": 0,
     "modules-center": mods,
     "custom/sep": {"format": "", "tooltip": False},
@@ -278,8 +291,11 @@ start() {
 	if running; then
 		return 0
 	fi
-	[[ -r $STYLE ]] || warn "missing $STYLE (waybar will use its default style)"
-	setsid waybar -c "$CFG" -s "$STYLE" >/dev/null 2>&1 &
+	command -v niri-size >/dev/null 2>&1 && niri-size gen >/dev/null 2>&1
+	local style=$STYLE
+	[[ -r $GEN_STYLE ]] && style=$GEN_STYLE
+	[[ -r $style ]] || warn "missing $style (waybar will use its default style)"
+	setsid waybar -c "$CFG" -s "$style" >/dev/null 2>&1 &
 }
 
 # ---------------------------------------------------------------- actions

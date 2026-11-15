@@ -109,6 +109,8 @@ in
   config = lib.mkIf cfg.enable (lib.mkMerge [
     {
       environment.systemPackages = common;
+      # dwm-wall, dwm-theme and the other scripts live in ~/.local/bin
+      environment.localBinInPath = lib.mkDefault true;
       fonts.packages = [ jetbrainsNerd pkgs.noto-fonts ];
 
       # the click targets on the bars: network, bluetooth and the power profile menu.

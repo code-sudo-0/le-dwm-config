@@ -2,6 +2,22 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- Niri settings menu (`Super+Shift+D` or the gear on the top bar): theme and auto theme, wallpaper,
+  bar and dock size, display, window gaps, rounded corners, terminal opacity, bars, key list.
+- Niri bar and dock size: `compact`, `small`, `normal`, `large` (`niri-bars size ...`). The bar files stay
+  as installed; scaled copies are generated into `~/.config/waybar/gen/`.
+- Niri display settings (`niri-display`): resolution/refresh, scale, rotation, on/off per screen, with a
+  12 second confirm-or-revert, saved to `display.kdl` so they persist.
+- Niri auto theme: changing the wallpaper with `niri-wall` rebuilds the palette from the picture and
+  recolors niri, waybar, mako and kitty (open terminals too). The switch is shared with dwm.
+- `niri-theme` now also writes the kitty colors (it only touched niri, waybar and mako before), and
+  `niri-theme from-image <file>` builds a theme from a picture.
+- Fixed: a fresh niri-only install had no wallpapers and no kitty theme include; `niri-wall` no longer
+  flashes when switching (the new `swaybg` starts before the old one stops); the installer's Restart entry
+  also restarts the niri bars; waybar/kitty reload signals also reach NixOS' `.waybar-wrapped`.
+- The installer keeps `include dwm-theme.conf` as the last line of `kitty.conf`, so a theme set earlier with
+  kitty's own theme chooser (`current-theme.conf`) can no longer override the wallpaper colors.
+- NixOS module puts `~/.local/bin` on the PATH, so `dwm-wall`, `dwm-theme` etc. work in a shell.
 - Fixed on NixOS: open kitty windows now recolor when the theme changes (NixOS runs kitty as `.kitty-wrapped`,
   so the reload signal never reached it); same for Thunar and waybar. Auto theme now reports why it failed
   (notification + `~/.config/dwm-theme/auto-theme.log`) instead of failing silently.

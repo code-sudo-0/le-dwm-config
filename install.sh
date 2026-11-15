@@ -210,6 +210,27 @@ install_dwm_wallpaper() {
 	fi
 }
 
+# kitty reads the wallpaper theme from dwm-theme.conf, written by dwm-theme / niri-theme
+setup_kitty() {
+	echo "==> Terminal theme (kitty)"
+	local kc="$HOME/.config/kitty/kitty.conf"
+	mkdir -p "$(dirname "$kc")"
+	if [[ ! -f $kc ]]; then
+		printf '%s\n' 'font_family JetBrainsMono Nerd Font' 'font_size 11.0' \
+			'window_padding_width 6' 'include dwm-theme.conf' > "$kc"
+	else
+		# the theme include must be the LAST line that sets colors: anything included after it
+		# (for example kitty's own current-theme.conf) would override the wallpaper theme
+		sed -i '/^[[:space:]]*include[[:space:]]\+dwm-theme\.conf[[:space:]]*$/d' "$kc"
+		printf '\n%s\n' 'include dwm-theme.conf' >> "$kc"
+		grep -qE '^[[:space:]]*include[[:space:]]+current-theme\.conf' "$kc" \
+			&& warn "kitty.conf includes current-theme.conf (kitty's own theme); dwm-theme.conf now comes after it and wins"
+	fi
+	if ! grep -q '^[[:space:]]*background_opacity' "$kc"; then
+		printf '%s\n' "background_opacity $KITTY_OPACITY" >> "$kc"
+	fi
+}
+
 install_dwm_theme() {
 	echo "==> Applying theme and building dwm"
 	local theme="${THEME:-$(cat "$CONF/current" 2>/dev/null || echo nord)}"
@@ -235,18 +256,7 @@ install_dwm_theme() {
 	fi
 	echo "dwm built: $version"
 
-	echo "==> Terminal theme (kitty)"
-	local kc="$HOME/.config/kitty/kitty.conf"
-	mkdir -p "$(dirname "$kc")"
-	if [[ ! -f $kc ]]; then
-		printf '%s\n' 'font_family JetBrainsMono Nerd Font' 'font_size 11.0' \
-			'window_padding_width 6' 'include dwm-theme.conf' > "$kc"
-	elif ! grep -q 'dwm-theme.conf' "$kc"; then
-		printf '\n%s\n' 'include dwm-theme.conf' >> "$kc"
-	fi
-	if ! grep -q '^[[:space:]]*background_opacity' "$kc"; then
-		printf '%s\n' "background_opacity $KITTY_OPACITY" >> "$kc"
-	fi
+	setup_kitty
 
 	# picom.conf (translucent bars, rounded windows, animations) was written by dwm-bar above
 
@@ -330,6 +340,11 @@ install_niri_scripts() {
 	install -m755 "$REPO_DIR/niri-dock"  "$BIN/niri-dock"
 	install -m755 "$REPO_DIR/niri-bars"  "$BIN/niri-bars"
 	install -m755 "$REPO_DIR/niri-keys"  "$BIN/niri-keys"
+	install -m755 "$REPO_DIR/niri-size"  "$BIN/niri-size"
+	install -m755 "$REPO_DIR/niri-display"  "$BIN/niri-display"
+	install -m755 "$REPO_DIR/niri-settings" "$BIN/niri-settings"
+	# builds a theme from the wallpaper (auto theme); shared with dwm
+	install -m755 "$REPO_DIR/dwm-palette" "$BIN/dwm-palette"
 }
 
 # replace a managed file but keep one backup of the previous version
@@ -356,6 +371,17 @@ install_niri_config() {
 	mkdir -p "$CONF/themes"
 	cp "$REPO_DIR"/themes/*.theme "$CONF/themes/" || warn "could not copy themes"
 
+	# wallpapers (same folder as dwm); without any, the wallpaper picker has nothing to show
+	mkdir -p "$WALL_DIR" "$HOME/.local/share/le-dwm-config/wallpapers"
+	if [[ -d $REPO_DIR/wallpapers ]]; then
+		cp -n "$REPO_DIR"/wallpapers/* "$WALL_DIR"/ 2>/dev/null || true
+		cp -n "$REPO_DIR"/wallpapers/* "$HOME/.local/share/le-dwm-config/wallpapers"/ 2>/dev/null || true
+	fi
+
+	setup_kitty
+	"$BIN/niri-size" gen || warn "could not generate the scaled bar files"
+	"$BIN/niri-settings" gen 2>/dev/null || true
+
 	# dock config: seed the app list and generate the bottom bar config
 	"$BIN/niri-dock" generate || warn "could not generate the dock config"
 
@@ -375,7 +401,8 @@ install_niri() {
 	echo "Done. Log out and choose the 'niri' session on the login screen."
 	(( NIXOS )) && echo "(On NixOS niri comes from programs.le-dwm.niri.enable = true; or programs.niri.enable = true;.)"
 	echo "The top bar shows workspaces, window title and status; the dock is at the bottom."
-	echo "Super+P opens the launcher/dock menu, Super+Shift+T themes, Super+Shift+W wallpapers."
+	echo "Super+P opens the launcher/dock menu, Super+Shift+D the settings menu (theme, display, bar size...),"
+	echo "Super+Shift+T themes, Super+Shift+W wallpapers. Turn on 'Auto theme' there to recolor from the wallpaper."
 	echo "Niri reloads ~/.config/niri/config.kdl automatically when you save it."
 }
 
@@ -452,7 +479,12 @@ update_niri() { update_flow niri; }
 
 restart_dwm() {
 	if ! pgrep -x dwm >/dev/null 2>&1; then
-		warn "dwm is not running; nothing to restart"
+		if pgrep -x niri >/dev/null 2>&1; then
+			echo "==> Restarting the niri bars and dock"
+			"$BIN/niri-bars" restart && say "bars restarted."
+			return
+		fi
+		warn "neither dwm nor niri is running; nothing to restart"
 		return 1
 	fi
 	if [[ ${DWM_RESTARTABLE:-} == 1 ]] || pgrep -x start-dwm >/dev/null 2>&1; then
@@ -482,7 +514,7 @@ menu_header() {
 		nixos) echo "                    (system update here = nix flake update + nixos-rebuild switch)" ;;
 		arch)  echo "                    (system update here = pacman -Syu)" ;;
 	esac
-	echo "  5) Restart dwm    restart dwm, windows stay open"
+	echo "  5) Restart        restart dwm (or the niri bars), windows stay open"
 	echo "  6) Quit"
 	echo
 }
@@ -534,7 +566,7 @@ Without arguments (on a terminal) this opens a menu:
   2) Install Niri    niri, waybar top bar, bottom dock, swaybg, mako, themes
   3) Update dwm      git pull, system update, re-apply (keeps your config.h)
   4) Update Niri     git pull, system update, re-apply the niri config
-  5) Restart dwm
+  5) Restart         dwm, or the niri bars when niri is running
   6) Quit
 
 Scripted use:

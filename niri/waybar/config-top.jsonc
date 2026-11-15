@@ -7,7 +7,7 @@
   "margin-right": 8,
   "spacing": 4,
   "modules-left": ["niri/workspaces", "niri/window"],
-  "modules-right": ["tray", "network", "bluetooth", "pulseaudio", "backlight", "battery", "clock"],
+  "modules-right": ["tray", "network", "bluetooth", "pulseaudio", "backlight", "battery", "clock", "custom/settings"],
 
   "niri/workspaces": {
     "format": "{icon}",
@@ -81,6 +81,13 @@
     "format-plugged": "\uf0e7 {capacity}%",
     "format-icons": ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"],
     "tooltip-format": "{timeTo}  {power}W"
+  },
+
+  "custom/settings": {
+    "format": "\uf013",
+    "tooltip": true,
+    "tooltip-format": "Settings",
+    "on-click": "niri-settings"
   },
 
   "clock": {

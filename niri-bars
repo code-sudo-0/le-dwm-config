@@ -5,12 +5,14 @@
 #   niri-bars restart    restart both bars
 #   niri-bars toggle     show/hide both bars (Super+B)
 #   niri-bars menu       small menu (Super+Shift+B)
+#   niri-bars size [compact|small|normal|large]   show or change the bar and dock size
 set -u
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 TOP_CFG="$CONF/waybar/config-top.jsonc"
 TOP_STYLE="$CONF/waybar/style-top.css"
 TOP_PATTERN='waybar.*config-top\.jsonc'
+export PATH="$HOME/.local/bin:$PATH"
 
 say() { printf '%s\n' "$*"; }
 warn() { echo "niri-bars: $*" >&2; }
@@ -19,10 +21,20 @@ top_running() {
 	pgrep -f "$TOP_PATTERN" >/dev/null 2>&1
 }
 
+# scaled copies of the bar files for the chosen size (niri-size), used when they exist
+size_gen() {
+	command -v niri-size >/dev/null 2>&1 && niri-size gen >/dev/null 2>&1
+	if [[ -r $CONF/waybar/gen/config-top.jsonc && -r $CONF/waybar/gen/style-top.css ]]; then
+		TOP_CFG="$CONF/waybar/gen/config-top.jsonc"
+		TOP_STYLE="$CONF/waybar/gen/style-top.css"
+	fi
+}
+
 start_top() {
 	if top_running; then
 		return 0
 	fi
+	size_gen
 	if [[ ! -r $TOP_CFG ]]; then
 		warn "missing $TOP_CFG (run the installer)"
 		return 1
@@ -61,8 +73,9 @@ menu() {
 
 bar_menu() {
 	local choice
-	choice=$(menu "Bars" $'Restart bars\nToggle bars\nDock applications\nTheme picker\nWallpaper picker')
+	choice=$(menu "Bars" $'Settings\nRestart bars\nToggle bars\nDock applications\nTheme picker\nWallpaper picker')
 	case $choice in
+		"Settings") niri-settings ;;
 		"Restart bars") restart_all; say "bars restarted" ;;
 		"Toggle bars") toggle_all ;;
 		"Dock applications") niri-dock menu ;;
@@ -77,5 +90,13 @@ case "${1:-start}" in
 	restart) restart_all ;;
 	toggle) toggle_all ;;
 	menu) bar_menu ;;
-	*) warn "usage: niri-bars [start|restart|toggle|menu]"; exit 1 ;;
+	size)
+		if [[ -n ${2:-} ]]; then
+			niri-size set "$2" || exit 1
+			restart_all
+		else
+			niri-size get
+		fi
+		;;
+	*) warn "usage: niri-bars [start|restart|toggle|menu|size [compact|small|normal|large]]"; exit 1 ;;
 esac

@@ -5,6 +5,7 @@
 #   niri-wall random           pick a random one (Super+Ctrl+W)
 #   niri-wall set <path>       use one file
 #   niri-wall restore          restore the saved wallpaper (runs at login)
+#   niri-wall auto on|off|status   recolor the whole desktop from each new wallpaper
 #
 # Uses the same ~/Pictures/wallpapers folder as dwm, so both sessions share
 # the wallpapers.
@@ -13,6 +14,8 @@ set -u
 WALL_DIR="${WALL_DIR:-$HOME/Pictures/wallpapers}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/niri"
 STATE="$CONF/wallpaper"
+# the same switch dwm uses, so the setting is shared by both sessions
+AUTO="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-theme/auto-theme"
 
 die() { echo "niri-wall: $*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
@@ -39,12 +42,29 @@ start_swaybg() {
 	fi
 	[[ -r $file ]] || die "cannot read wallpaper: $file"
 
-	pkill -x swaybg 2>/dev/null || true
-	sleep 0.2
+	local old
+	old=$(pgrep -x swaybg 2>/dev/null || true)
 	setsid swaybg -m fill -i "$file" >/dev/null 2>&1 &
+	if [[ -n $old ]]; then sleep 0.4; kill $old 2>/dev/null || true; fi
 	mkdir -p "$CONF" 2>/dev/null || true
 	printf '%s\n' "$file" > "$STATE"
 	say "wallpaper: $file"
+}
+
+note() { echo "niri-wall: $*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a niri-wall "$*" 2>/dev/null; return 0; }
+
+# Set a wallpaper chosen by the user (not used by `restore`, so logging in never recolors).
+# With auto theme on, the palette of the new picture recolors niri, the bars, notifications and kitty.
+set_wall() {
+	start_swaybg "$1" || return 1
+	[[ -f $AUTO ]] || return 0
+	local t log="$CONF/auto-theme.log"
+	t=$(command -v niri-theme || true)
+	[[ -n $t ]] || t="$HOME/.local/bin/niri-theme"
+	if ! "$t" from-image "$1" >"$log" 2>&1; then
+		note "auto theme failed: $(tail -n1 "$log") (full output: $log)"
+		return 1
+	fi
 }
 
 pick_wall() {
@@ -59,7 +79,7 @@ pick_wall() {
 		sel=$(printf '%s\n' "$walls" | dmenu -i -p "Wallpaper")
 	fi
 	[[ -n ${sel:-} ]] || exit 0
-	start_swaybg "$sel"
+	set_wall "$sel"
 }
 
 case "${1:-restore}" in
@@ -67,12 +87,24 @@ case "${1:-restore}" in
 	random)
 		walls=$(list_walls)
 		[[ -n $walls ]] || die "no pictures in $WALL_DIR"
-		start_swaybg "$(printf '%s\n' "$walls" | shuf -n 1)"
+		set_wall "$(printf '%s\n' "$walls" | shuf -n 1)"
 		;;
 	set)
 		shift
 		[[ -n ${1:-} ]] || die "usage: niri-wall set <path>"
-		start_swaybg "$1"
+		set_wall "$1"
+		;;
+	auto)
+		case ${2:-status} in
+			on)
+				mkdir -p "$(dirname "$AUTO")"; touch "$AUTO"
+				note "theme now follows the wallpaper"
+				[[ -s $STATE ]] && "$(command -v niri-theme || echo "$HOME/.local/bin/niri-theme")" from-image "$(<"$STATE")" >/dev/null 2>&1
+				;;
+			off) rm -f "$AUTO"; note "theme no longer follows the wallpaper" ;;
+			status) if [[ -f $AUTO ]]; then echo on; else echo off; fi ;;
+			*) die "usage: niri-wall auto on|off|status" ;;
+		esac
 		;;
 	restore)
 		if [[ -s $STATE ]]; then
@@ -86,5 +118,5 @@ case "${1:-restore}" in
 			fi
 		fi
 		;;
-	*) die "usage: niri-wall [pick|random|set <path>|restore]" ;;
+	*) die "usage: niri-wall [pick|random|set <path>|restore|auto on|off|status]" ;;
 esac
