@@ -35,6 +35,21 @@ fi
 NIXOS=0
 if [[ -e /etc/NIXOS ]] || grep -qx 'ID=nixos' /etc/os-release 2>/dev/null; then NIXOS=1; fi
 
+# which kind of system this is: nixos, arch (Arch, CachyOS, Manjaro, EndeavourOS...) or other
+distro() {
+	if (( NIXOS )); then echo nixos; return; fi
+	local id="" like=""
+	if [[ -r /etc/os-release ]]; then
+		id=$(. /etc/os-release; echo "${ID:-}")
+		like=$(. /etc/os-release; echo "${ID_LIKE:-}")
+	fi
+	if [[ $id == arch || " $like " == *" arch "* ]] || command -v pacman >/dev/null 2>&1; then
+		echo arch
+	else
+		echo other
+	fi
+}
+
 nix_check() {   # nix_check <dwm|niri>
 	local need c missing=()
 	case $1 in
@@ -374,17 +389,65 @@ pull_repo() {
 	fi
 }
 
-update_dwm() {
-	echo "==> Updating le-dwm-config (dwm)"
-	pull_repo || return 1
-	DWM_SKIP_PACKAGES=1 install_dwm_all
+# Ask whether to update the whole system too (always yes when not on a terminal).
+# SKIP_SYSTEM_UPDATE=1 turns the system part off.
+want_system_update() {   # want_system_update "<what will run>"
+	[[ ${SKIP_SYSTEM_UPDATE:-0} == 1 ]] && return 1
+	[[ -t 0 && -t 1 ]] || return 0
+	local a
+	read -r -p "Also update the system packages ($1)? [Y/n] " a || return 1
+	[[ ${a,,} != n* ]]
 }
 
-update_niri() {
-	echo "==> Updating le-dwm-config (niri)"
-	pull_repo || return 1
-	DWM_SKIP_PACKAGES=1 install_niri
+# NixOS: refresh the le-dwm input of the system flake, then switch to the new generation.
+nixos_system_update() {
+	local dir="${NIXOS_FLAKE:-/etc/nixos}"
+	local nixcmd=(sudo nix --extra-experimental-features 'nix-command flakes')
+	echo "==> NixOS: updating the system ($dir)"
+	if [[ -f $dir/flake.nix ]]; then
+		if grep -q 'le-dwm' "$dir/flake.nix"; then
+			"${nixcmd[@]}" flake update le-dwm --flake "$dir" \
+				|| { warn "could not update the le-dwm flake input (is the latest release pushed to GitHub?)"; return 1; }
+		else
+			warn "$dir/flake.nix has no le-dwm input; only rebuilding (see the NixOS section of the README)"
+		fi
+		sudo nixos-rebuild switch --flake "$dir" || { warn "nixos-rebuild failed (see above)"; return 1; }
+	else
+		sudo nix-channel --update 2>/dev/null || true
+		sudo nixos-rebuild switch || { warn "nixos-rebuild failed (see above)"; return 1; }
+	fi
 }
+
+# update_flow <dwm|niri>: pull the dotfiles, update the system the way this distro does it, re-apply
+update_flow() {
+	local kind=$1 apply
+	[[ $kind == dwm ]] && apply=install_dwm_all || apply=install_niri
+	echo "==> Updating le-dwm-config ($kind)"
+	pull_repo || return 1
+	case $(distro) in
+		nixos)
+			if want_system_update "nix flake update + nixos-rebuild switch"; then
+				nixos_system_update || warn "system update did not finish; continuing with the dotfiles"
+			fi
+			$apply
+			;;
+		arch)
+			# the install functions run pacman -Syu and install anything new
+			if want_system_update "sudo pacman -Syu"; then
+				$apply
+			else
+				DWM_SKIP_PACKAGES=1 $apply
+			fi
+			;;
+		*)
+			warn "unknown distro: only the dotfiles are updated, not the system packages"
+			DWM_SKIP_PACKAGES=1 $apply
+			;;
+	esac
+}
+
+update_dwm()  { update_flow dwm; }
+update_niri() { update_flow niri; }
 
 restart_dwm() {
 	if ! pgrep -x dwm >/dev/null 2>&1; then
@@ -412,8 +475,12 @@ menu_header() {
 	echo "============================================================"
 	echo "  1) Install dwm    packages, dwm, bars, themes, session"
 	echo "  2) Install Niri   niri, waybar bars, dock, themes"
-	echo "  3) Update dwm     git pull + re-apply (keeps your config.h)"
-	echo "  4) Update Niri    git pull + re-apply the niri config"
+	echo "  3) Update dwm     git pull + system update + re-apply (keeps your config.h)"
+	echo "  4) Update Niri    git pull + system update + re-apply the niri config"
+	case $(distro) in
+		nixos) echo "                    (system update here = nix flake update + nixos-rebuild switch)" ;;
+		arch)  echo "                    (system update here = pacman -Syu)" ;;
+	esac
 	echo "  5) Restart dwm    restart dwm, windows stay open"
 	echo "  6) Quit"
 	echo
@@ -464,8 +531,8 @@ install.sh - set up dwm (X11) or niri (Wayland) on CachyOS/Arch.
 Without arguments (on a terminal) this opens a menu:
   1) Install dwm     packages, dwm, bars, themes, session
   2) Install Niri    niri, waybar top bar, bottom dock, swaybg, mako, themes
-  3) Update dwm      git pull + re-apply (keeps your config.h)
-  4) Update Niri     git pull + re-apply the niri config
+  3) Update dwm      git pull, system update, re-apply (keeps your config.h)
+  4) Update Niri     git pull, system update, re-apply the niri config
   5) Restart dwm
   6) Quit
 
@@ -484,7 +551,9 @@ nixos/le-dwm.nix to your system config (README, "NixOS"), then run this installe
 
 Environment:
   FORCE_CONFIG=1              replace an existing ~/dwm/config.h (backed up)
-  DWM_SKIP_PACKAGES=1         do not run pacman (used by updates)
+  DWM_SKIP_PACKAGES=1         do not run pacman
+  SKIP_SYSTEM_UPDATE=1        updates only the dotfiles, not the system (pacman -Syu / nixos-rebuild)
+  NIXOS_FLAKE=/path           NixOS system flake directory (default /etc/nixos)
   THEME=<name>                theme for a fresh install
 EOF
 }

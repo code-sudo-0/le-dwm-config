@@ -109,6 +109,11 @@ runtime with the usual keys.
    **niri** on the login screen.
 
 Notes:
+- **Updating** (menu entries 3 and 4, or `./install.sh --update`) detects the distro: on NixOS it pulls the
+  repo, runs `nix flake update le-dwm` and `nixos-rebuild switch` on `/etc/nixos` (`NIXOS_FLAKE=/path` to
+  change it), then re-applies the dotfiles; on Arch-based systems it runs `pacman -Syu`. On a terminal it
+  asks first; `SKIP_SYSTEM_UPDATE=1` updates only the dotfiles. Push your latest release before updating
+  a NixOS machine, since the module comes from GitHub.
 - dwm is compiled inside a small nix shell (`nix/devshell/flake.nix`, run through `le-devrun`), which
   also happens whenever you change themes. The shell is kept as a profile under
   `~/.local/state/le-dwm`, so `nix-collect-garbage` will not delete the libraries dwm uses.

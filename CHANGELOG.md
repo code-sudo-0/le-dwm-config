@@ -2,6 +2,9 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- Installer updates detect the distro: NixOS runs `nix flake update le-dwm` + `nixos-rebuild switch`,
+  Arch-based systems run `pacman -Syu`, anything else updates only the dotfiles. Asks first on a terminal;
+  `SKIP_SYSTEM_UPDATE=1` skips it. The NixOS module looks up Thunar by its new top-level name.
 - NixOS support: `nixos/le-dwm.nix` (also `nixosModules.default` in `flake.nix`) installs the programs,
   fonts and a `le-dwm` login session; `./install.sh` detects NixOS, skips pacman/sudo steps and builds
   dwm inside a nix dev shell (`le-devrun`, `nix/devshell/flake.nix`) so the libraries are not garbage

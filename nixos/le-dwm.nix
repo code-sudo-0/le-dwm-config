@@ -38,7 +38,7 @@ let
     (pkgs.python3.withPackages (ps: [ ps.pillow ]))
     pkgs.kitty
     pkgs.firefox
-    (pick [ "xfce.thunar" "thunar" ])
+    (pick [ "thunar" "xfce.thunar" ])
     pkgs.brightnessctl
     pkgs.wireplumber
     pkgs.networkmanagerapplet
