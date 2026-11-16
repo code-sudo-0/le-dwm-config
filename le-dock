@@ -499,7 +499,9 @@ def run_gui():
                     self.schedule_hide(800)
                 else:
                     h = self.win.get_height() or (HEAD + ICON + 40)
-                    self.slide(-(h - 4))
+                    # leave a hover zone on screen: the dock's bottom edge peeks out
+                    self.slide(-max(0, h - (self.bottom_pad + int(10 * scale))))
+                    print("le-dock: autohide: hidden (window %dpx tall)" % h, file=sys.stderr, flush=True)
                 return False
             self.hide_id = GLib.timeout_add(ms, go)
 
@@ -507,6 +509,7 @@ def run_gui():
             """slide up; linger > 0 hides it again after that many ms unless the pointer is on it"""
             self.cancel_hide()
             self.slide(0)
+            print("le-dock: autohide: shown", file=sys.stderr, flush=True)
             if linger:
                 self.schedule_hide(linger)
 
