@@ -160,6 +160,7 @@ dock_menu() {
 		engine=$(niri-size kv get DOCK_ENGINE gtk 2>/dev/null)
 		choice=$(printf '%s\n' \
 			"Size                $(niri-size get dock)"$'\t'view-fullscreen \
+			"Spacing             $(niri-size kv get DOCK_SPACING normal 2>/dev/null)"$'\t'format-indent-more \
 			"Show / hide         $(onoff DOCK)"$'\t'view-reveal \
 			"Look                $([[ $engine == waybar ]] && echo simple || echo macOS)  (running apps, bounce)"$'\t'preferences-desktop-theme \
 			"Applications        pin or unpin"$'\t'view-app-grid \
@@ -167,6 +168,18 @@ dock_menu() {
 			"Back"$'\t'go-previous | menu "Dock" --lines 6) || return 0
 		case $choice in
 			Size*) size_menu dock ;;
+			Spacing*)
+				local cur_sp
+				cur_sp=$(niri-size kv get DOCK_SPACING normal 2>/dev/null)
+				choice=$(printf '%s\n' \
+					"tight"$'\t'format-indent-less "normal"$'\t'format-justify-center \
+					"roomy"$'\t'format-indent-more "wide"$'\t'view-fullscreen \
+					| mark "$cur_sp" | menu "Dock spacing" --lines 4) || continue
+				choice=$(unmark "$choice")
+				[[ -n $choice ]] || continue
+				niri-size kv set DOCK_SPACING "$choice"
+				niri-dock stop 2>/dev/null; sleep 0.3; niri-dock start 2>/dev/null
+				;;
 			Show*) niri-bars dock toggle ;;
 			Look*)
 				choice=$(printf '%s\n' \

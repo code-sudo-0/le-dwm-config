@@ -270,6 +270,17 @@ def dock_scale():
         return 1.0
 
 
+def dock_spacing():
+    """(gap between icons, padding around them) as multipliers of the default"""
+    try:
+        r = subprocess.run(["niri-size", "kv", "get", "DOCK_SPACING", "normal"],
+                           capture_output=True, text=True, timeout=5)
+        return {"tight": (0.5, 0.7), "normal": (1.0, 1.0), "roomy": (2.0, 1.4),
+                "wide": (3.2, 1.8)}.get(r.stdout.strip(), (1.0, 1.0))
+    except (OSError, subprocess.SubprocessError):
+        return (1.0, 1.0)
+
+
 def spawn_entry(entry, extra=None):
     argv = exec_argv(entry) + (extra or [])
     if not argv:
@@ -356,6 +367,7 @@ def run_gui():
     PAD = int(10 * scale)
     HEAD = int(ICON * 0.7)          # bounce headroom above the dock
     theme = read_theme()
+    gap_m, pad_m = dock_spacing()
 
     css = """
     window.le-dock { background: transparent; }
@@ -371,8 +383,8 @@ def run_gui():
     popover button { color: %(fg)s; background: transparent; border-radius: 8px; padding: 4px 10px; }
     popover button:hover { background: %(hi)s; }
     """ % dict(bg=hex_rgba(theme["BG"], 0.78), bd=hex_rgba(theme["FG"], 0.12), fg=theme["FG"],
-               ac=theme["ACCENT"], hi=theme["BG_HI"], rad=int(ICON * 0.38), pad=int(6 * scale),
-               gap=int(4 * scale), lift=int(ICON * 0.12), trad=int(ICON * 0.22))
+               ac=theme["ACCENT"], hi=theme["BG_HI"], rad=int(ICON * 0.38), pad=int(6 * scale * pad_m),
+               gap=int(4 * scale * gap_m), lift=int(ICON * 0.12), trad=int(ICON * 0.22))
 
     class Dock(Gtk.Application):
         def __init__(self):
