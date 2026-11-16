@@ -326,6 +326,10 @@ install_niri_packages() {
 	done
 
 	# nice-to-haves, installed one at a time
+	# the macOS-style dock (le-dock), icon theme and menu helpers; without these the waybar dock is used
+	for pkg in gtk4 gtk4-layer-shell python-gobject python-cairo python-pillow papirus-icon-theme; do
+		sudo pacman -S --needed --noconfirm "$pkg" || warn "could not install $pkg (the simple dock / plain menus will be used)"
+	done
 	for pkg in swaylock swayidle xdg-desktop-portal-gnome qt5-wayland qt6-wayland; do
 		sudo pacman -S --needed --noconfirm "$pkg" || warn "could not install $pkg (skipping)"
 	done
@@ -343,6 +347,9 @@ install_niri_scripts() {
 	install -m755 "$REPO_DIR/niri-size"  "$BIN/niri-size"
 	install -m755 "$REPO_DIR/niri-display"  "$BIN/niri-display"
 	install -m755 "$REPO_DIR/niri-settings" "$BIN/niri-settings"
+	install -m755 "$REPO_DIR/niri-menu"     "$BIN/niri-menu"
+	install -m755 "$REPO_DIR/niri-thumbs"   "$BIN/niri-thumbs"
+	install -m755 "$REPO_DIR/le-dock"       "$BIN/le-dock"
 	# builds a theme from the wallpaper (auto theme); shared with dwm
 	install -m755 "$REPO_DIR/dwm-palette" "$BIN/dwm-palette"
 }

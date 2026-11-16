@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """niri-size - make the niri top bar and dock smaller or larger.
 
-  niri-size get              print the current size (compact, small, normal or large)
-  niri-size set <size>       save a size and regenerate the bar files
-  niri-size gen              regenerate ~/.config/waybar/gen/* from the installed bar files
-  niri-size scale            print the numeric scale (used by niri-dock)
+  niri-size get [top|dock]          print the size (compact, small, normal or large)
+  niri-size set <size>              both bars to one size
+  niri-size set top|dock <size>     only the top bar, or only the dock
+  niri-size scale [top|dock]        the numeric scale (used by niri-dock)
+  niri-size style [floating|docked] show or set the top bar style: floating (rounded, with a gap)
+                                    or docked (square, stuck to the top edge)
+  niri-size kv get KEY [default]    small settings shared with niri-bars (DOCK=on|off, TOP=on|off)
+  niri-size kv set KEY VALUE
+  niri-size gen                     regenerate ~/.config/waybar/gen/* from the installed bar files
 
 The installed bar files (config-top.jsonc, style-top.css, style-bottom.css) stay as they are;
 the scaled copies that waybar reads live in ~/.config/waybar/gen/. Restart the bars afterwards
@@ -23,30 +28,59 @@ SETTINGS = os.path.join(NIRI, "bars.conf")
 SIZES = {"compact": 0.7, "small": 0.85, "normal": 1.0, "large": 1.2}
 
 
-def get_size():
+def read_kv():
+    data = {}
     try:
         with open(SETTINGS, encoding="utf-8") as fh:
             for line in fh:
-                if line.startswith("SIZE="):
-                    v = line.split("=", 1)[1].strip()
-                    if v in SIZES:
-                        return v
+                if "=" in line:
+                    k, v = line.rstrip("\n").split("=", 1)
+                    data[k.strip()] = v.strip()
     except OSError:
         pass
-    return "normal"
+    return data
 
 
-def set_size(name):
+def write_kv(data):
     os.makedirs(NIRI, exist_ok=True)
-    lines = []
-    try:
-        with open(SETTINGS, encoding="utf-8") as fh:
-            lines = [ln for ln in fh if not ln.startswith("SIZE=")]
-    except OSError:
-        pass
-    lines.append("SIZE=%s\n" % name)
-    with open(SETTINGS, "w", encoding="utf-8") as fh:
-        fh.writelines(lines)
+    tmp = SETTINGS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        for k, v in data.items():
+            fh.write("%s=%s\n" % (k, v))
+    os.replace(tmp, SETTINGS)
+
+
+def get_size(which=None):
+    """size name for the whole desktop, or for one bar (an override wins)"""
+    data = read_kv()
+    if which in ("top", "dock"):
+        v = data.get(which.upper() + "_SIZE")
+        if v in SIZES:
+            return v
+    v = data.get("SIZE")
+    return v if v in SIZES else "normal"
+
+
+def set_size(name, which=None):
+    data = read_kv()
+    if which in ("top", "dock"):
+        data[which.upper() + "_SIZE"] = name
+    else:
+        data["SIZE"] = name
+        data.pop("TOP_SIZE", None)     # "both" means both
+        data.pop("DOCK_SIZE", None)
+    write_kv(data)
+
+
+def get_style():
+    v = read_kv().get("TOP_STYLE")
+    return v if v in ("floating", "docked") else "floating"
+
+
+def set_style(name):
+    data = read_kv()
+    data["TOP_STYLE"] = name
+    write_kv(data)
 
 
 def px(value, scale):
@@ -89,6 +123,20 @@ def scale_json(text, scale):
     return re.sub(r'("(?:%s)"\s*:\s*)(\d+)' % KEYS, rep, text)
 
 
+def dock_top_css(text):
+    """square bar that sticks to the top edge: no radius, no side/top border, a line along the bottom"""
+    def block(m):
+        b = m.group(0)
+        b = re.sub(r"border-radius:\s*\d+px;", "border-radius: 0;", b)
+        b = re.sub(r"border:\s*1px solid ([^;]+);", r"border: none;\n  border-bottom: 1px solid \1;", b)
+        return b
+    return re.sub(r"window#waybar\s*\{[^}]*\}", block, text, count=1)
+
+
+def dock_top_json(text):
+    return re.sub(r'("(?:margin-top|margin-left|margin-right)"\s*:\s*)\d+', r"\g<1>0", text)
+
+
 def read(name):
     with open(os.path.join(WAYBAR, name), encoding="utf-8") as fh:
         return fh.read()
@@ -103,12 +151,18 @@ def write(name, data):
 
 
 def gen():
-    scale = SIZES[get_size()]
+    top_scale = SIZES[get_size("top")]
+    dock_scale = SIZES[get_size("dock")]
+    docked = get_style() == "docked"
+    jobs = [
+        ("config-top.jsonc", lambda t: dock_top_json(scale_json(t, top_scale)) if docked else scale_json(t, top_scale)),
+        ("style-top.css", lambda t: scale_css(dock_top_css(t) if docked else t, top_scale)),
+        ("style-bottom.css", lambda t: scale_css(t, dock_scale)),
+    ]
     done = 0
-    for name, fn in (("config-top.jsonc", scale_json), ("style-top.css", scale_css),
-                     ("style-bottom.css", scale_css)):
+    for name, fn in jobs:
         try:
-            write(name, fn(read(name), scale))
+            write(name, fn(read(name)))
             done += 1
         except OSError as exc:
             print("niri-size: skipped %s (%s)" % (name, exc), file=sys.stderr)
@@ -117,16 +171,41 @@ def gen():
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "get"
+    arg = argv[2] if len(argv) > 2 else None
     if cmd == "get":
-        print(get_size())
+        print(get_size(arg))
     elif cmd == "scale":
-        print(SIZES[get_size()])
+        print(SIZES[get_size(arg)])
     elif cmd == "set":
-        if len(argv) < 3 or argv[2] not in SIZES:
-            print("usage: niri-size set %s" % "|".join(SIZES), file=sys.stderr)
+        args = argv[2:]
+        which = None
+        if args and args[0] in ("top", "dock"):
+            which, args = args[0], args[1:]
+        if len(args) != 1 or args[0] not in SIZES:
+            print("usage: niri-size set [top|dock] %s" % "|".join(SIZES), file=sys.stderr)
             return 1
-        set_size(argv[2])
+        set_size(args[0], which)
         return gen()
+    elif cmd == "style":
+        if arg is None:
+            print(get_style())
+        elif arg in ("floating", "docked"):
+            set_style(arg)
+            return gen()
+        else:
+            print("usage: niri-size style [floating|docked]", file=sys.stderr)
+            return 1
+    elif cmd == "kv":
+        sub = arg
+        if sub == "get" and len(argv) > 3:
+            print(read_kv().get(argv[3], argv[4] if len(argv) > 4 else ""))
+        elif sub == "set" and len(argv) > 4:
+            data = read_kv()
+            data[argv[3]] = argv[4]
+            write_kv(data)
+        else:
+            print("usage: niri-size kv get KEY [default] | kv set KEY VALUE", file=sys.stderr)
+            return 1
     elif cmd == "gen":
         return gen()
     else:

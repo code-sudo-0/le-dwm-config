@@ -50,6 +50,8 @@ status bar, a compact bottom dock, 8 px gaps, rounded windows and the same theme
 | `niri-dock`, `niri-bars` | bottom application dock, start/restart/toggle the bars |
 | `niri-keys` | searchable list of every niri key, read from `config.kdl` (`Super+Shift+/`) |
 | `niri-settings`, `niri-display`, `niri-size` | settings menu (`Super+Shift+D`), display settings, bar and dock size |
+| `le-dock` | macOS-style dock: running apps, dots, bounce, hover zoom (needs `gtk4`, `gtk4-layer-shell`, `python-gobject`; else the waybar dock is used) |
+| `niri-menu`, `niri-thumbs` | icon menus, wallpaper thumbnails, theme swatches |
 | `install.sh` | installer / updater menu (dwm and niri; detects NixOS) |
 | `flake.nix`, `nixos/le-dwm.nix` | NixOS module: packages, fonts and login sessions |
 | `nix/devshell/`, `le-devrun` | NixOS build shell for dwm (C compiler + X11 headers) |

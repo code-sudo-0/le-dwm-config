@@ -83,6 +83,12 @@ let
     pkgs.swaylock
     pkgs.swayidle
     pkgs.xdg-desktop-portal-gtk
+    # le-dock (GTK4 dock), menu previews and icons
+    pkgs.gtk4
+    pkgs.gtk4-layer-shell
+    pkgs.gobject-introspection
+    (pkgs.python3.withPackages (ps: [ ps.pygobject3 ps.pycairo ps.pillow ]))
+    pkgs.papirus-icon-theme
   ];
 
   jetbrainsNerd =

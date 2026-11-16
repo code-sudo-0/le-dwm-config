@@ -10,6 +10,7 @@
 # Uses the same ~/Pictures/wallpapers folder as dwm, so both sessions share
 # the wallpapers.
 set -u
+export PATH="$HOME/.local/bin:$PATH"
 
 WALL_DIR="${WALL_DIR:-$HOME/Pictures/wallpapers}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/niri"
@@ -68,18 +69,17 @@ set_wall() {
 }
 
 pick_wall() {
-	local walls sel
+	local walls sel path name thumb
 	walls=$(list_walls)
 	[[ -n $walls ]] || die "no pictures in $WALL_DIR (put some there first)"
-	if command -v fuzzel >/dev/null 2>&1; then
-		sel=$(printf '%s\n' "$walls" | fuzzel --dmenu --prompt "Wallpaper  ")
-	elif command -v rofi >/dev/null 2>&1; then
-		sel=$(printf '%s\n' "$walls" | rofi -dmenu -p "Wallpaper")
-	else
-		sel=$(printf '%s\n' "$walls" | dmenu -i -p "Wallpaper")
-	fi
+	# a preview picture next to every name (cached thumbnails, see niri-thumbs)
+	sel=$(printf '%s\n' "$walls" | xargs -d '\n' niri-thumbs wall 2>/dev/null \
+		| while IFS=$'\t' read -r path thumb; do printf '%s\t%s\n' "${path##*/}" "$thumb"; done \
+		| niri-menu -p Wallpaper --rows 88 --lines 6 --width 46) || exit 0
 	[[ -n ${sel:-} ]] || exit 0
-	set_wall "$sel"
+	path=$(printf '%s\n' "$walls" | awk -v n="$sel" '{ i = split($0, p, "/"); if (p[i] == n) { print; exit } }')
+	[[ -n $path ]] || exit 0
+	set_wall "$path"
 }
 
 case "${1:-restore}" in

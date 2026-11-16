@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# niri-menu - the picker every niri script uses: a themed list with icons and previews.
+#
+#   printf 'label\ticon\n...' | niri-menu [-p PROMPT] [--lines N] [--width N] [--rows PX] [--no-icons]
+#
+# Input: one entry per line, "label" or "label<TAB>icon". An icon is a freedesktop icon name
+# ("video-display") or the path of a png/svg picture (wallpaper thumbnails, theme swatches).
+# Output: the chosen label on stdout (exit status 1 if nothing was chosen).
+#
+# It uses fuzzel (icons and picture previews need fuzzel 1.10 or newer), else rofi, else dmenu
+# (plain text), and takes its colors from the current theme.
+set -u
+
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+PROMPT="Menu" LINES_N=12 WIDTH=40 ROWS="" WANT_ICONS=1
+while (($#)); do
+	case $1 in
+		-p) PROMPT=${2:-Menu}; shift 2 ;;
+		--lines) LINES_N=$2; shift 2 ;;
+		--width) WIDTH=$2; shift 2 ;;
+		--rows) ROWS=$2; shift 2 ;;
+		--no-icons) WANT_ICONS=0; shift ;;
+		*) shift ;;
+	esac
+done
+
+# theme colors: the .theme file of the current niri theme (fallbacks are a dark blue-grey palette).
+# Read in a subshell: theme files define their own variables (ICONS, NAME ...) that must not leak in here.
+BG="#2e3440" FG="#d8dee9" ACCENT="#88c0d0" ACCENT_FG="#2e3440" ICON_THEME=""
+tname=$(cat "$CONF/niri/theme" 2>/dev/null || cat "$CONF/dwm-theme/current" 2>/dev/null || true)
+if [[ -n $tname && -r $CONF/dwm-theme/themes/$tname.theme ]]; then
+	eval "$( (
+		set +u
+		# shellcheck source=/dev/null
+		. "$CONF/dwm-theme/themes/$tname.theme" 2>/dev/null
+		printf 'BG=%q FG=%q ACCENT=%q ACCENT_FG=%q ICON_THEME=%q\n' \
+			"${BG:-#2e3440}" "${FG:-#d8dee9}" "${ACCENT:-#88c0d0}" "${ACCENT_FG:-#2e3440}" "${ICONS:-}"
+	) )"
+fi
+
+# only pass an icon theme that is installed
+have_icon_theme() {
+	local d IFS=:
+	for d in "${XDG_DATA_HOME:-$HOME/.local/share}" ${XDG_DATA_DIRS:-/usr/local/share:/usr/share} /run/current-system/sw/share "$HOME/.nix-profile/share"; do
+		[[ -d $d/icons/$1 ]] && return 0
+	done
+	return 1
+}
+
+hex() { local h=${1#\#}; printf '%s%s' "${h:0:6}" "${2:-ff}"; }   # "#rrggbb" -> "rrggbbaa"
+
+entries=$(cat)
+[[ -n $entries ]] || exit 1
+
+if command -v fuzzel >/dev/null 2>&1; then
+	ver=$(fuzzel --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1)
+	major=${ver%%.*} minor=${ver##*.}
+	icons_ok=0
+	if (( WANT_ICONS )) && [[ -n ${ver:-} ]] && { (( major > 1 )) || (( major == 1 && minor >= 10 )); }; then icons_ok=1; fi
+
+	args=(--dmenu --prompt "$PROMPT  " --lines "$LINES_N" --width "$WIDTH"
+		--background "$(hex "$BG" ee)" --text-color "$(hex "$FG")" --prompt-color "$(hex "$ACCENT")"
+		--input-color "$(hex "$FG")" --match-color "$(hex "$ACCENT")"
+		--selection-color "$(hex "$ACCENT")" --selection-text-color "$(hex "$ACCENT_FG")"
+		--selection-match-color "$(hex "$ACCENT_FG")"
+		--border-color "$(hex "$ACCENT" cc)" --border-width 2 --border-radius 16
+		--selection-radius 10 --font "JetBrainsMono Nerd Font:size=12")
+	# a taller row makes the icon (and a wallpaper preview) bigger
+	[[ -n $ROWS ]] && args+=(--line-height "$ROWS")
+	[[ -n $ICON_THEME ]] && have_icon_theme "$ICON_THEME" && args+=(--icon-theme "$ICON_THEME")
+
+	if (( icons_ok )); then
+		sel=$(while IFS=$'\t' read -r label icon; do
+			if [[ -n $icon ]]; then printf '%s\0icon\x1f%s\n' "$label" "$icon"; else printf '%s\n' "$label"; fi
+		done <<<"$entries" | fuzzel "${args[@]}" 2>/dev/null)
+	else
+		sel=$(cut -f1 <<<"$entries" | fuzzel "${args[@]}" --no-icons 2>/dev/null)
+	fi
+elif command -v rofi >/dev/null 2>&1; then
+	rargs=(-dmenu -p "$PROMPT" -l "$LINES_N" -i)
+	if (( WANT_ICONS )); then
+		rargs+=(-show-icons)
+		sel=$(while IFS=$'\t' read -r label icon; do
+			if [[ -n $icon ]]; then printf '%s\0icon\x1f%s\n' "$label" "$icon"; else printf '%s\n' "$label"; fi
+		done <<<"$entries" | rofi "${rargs[@]}" 2>/dev/null)
+	else
+		sel=$(cut -f1 <<<"$entries" | rofi "${rargs[@]}" 2>/dev/null)
+	fi
+elif command -v dmenu >/dev/null 2>&1; then
+	sel=$(cut -f1 <<<"$entries" | dmenu -i -l "$LINES_N" -p "$PROMPT" -nb "$BG" -nf "$FG" -sb "$ACCENT" -sf "$ACCENT_FG" 2>/dev/null)
+else
+	echo "niri-menu: install fuzzel (or rofi) to get menus" >&2
+	exit 1
+fi
+
+[[ -n $sel ]] || exit 1
+printf '%s\n' "$sel"

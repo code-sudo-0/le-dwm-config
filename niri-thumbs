@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""niri-thumbs - small preview pictures for the menus (cached in ~/.cache/le-dwm/thumbs).
+
+  niri-thumbs wall <picture>...     print "<picture><TAB><thumbnail>" for each picture
+  niri-thumbs theme <name>...       print "<name><TAB><swatch>" for each theme (a strip of its colors)
+
+Needs python pillow; without it nothing is printed for the missing previews (menus then show no picture).
+"""
+import hashlib
+import os
+import re
+import sys
+
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "le-dwm", "thumbs")
+CONF = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+THEMES = os.path.join(CONF, "dwm-theme", "themes")
+
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    Image = None
+
+
+def key(*parts):
+    return hashlib.sha1("|".join(parts).encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def wall(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    out = os.path.join(CACHE, "w-%s.png" % key(path, str(int(st.st_mtime)), str(st.st_size)))
+    if os.path.exists(out):
+        return out
+    if Image is None:
+        return None
+    try:
+        os.makedirs(CACHE, exist_ok=True)
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            im.thumbnail((320, 200))
+            # rounded corners so the preview matches the menu
+            mask = Image.new("L", im.size, 0)
+            ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.size[0] - 1, im.size[1] - 1), radius=14, fill=255)
+            rgba = im.convert("RGBA")
+            rgba.putalpha(mask)
+            tmp = out + ".tmp"
+            rgba.save(tmp, "PNG")
+            os.replace(tmp, out)
+        return out
+    except Exception:
+        return None
+
+
+def read_theme(name):
+    colors = {}
+    try:
+        with open(os.path.join(THEMES, name + ".theme"), encoding="utf-8") as fh:
+            for line in fh:
+                m = re.match(r'^\s*([A-Z_0-9]+)=["\']?(#[0-9a-fA-F]{6})', line)
+                if m:
+                    colors[m.group(1)] = m.group(2)
+    except OSError:
+        return None
+    return colors
+
+
+def theme(name):
+    c = read_theme(name)
+    if not c:
+        return None
+    try:
+        mt = int(os.stat(os.path.join(THEMES, name + ".theme")).st_mtime)
+    except OSError:
+        return None
+    out = os.path.join(CACHE, "t-%s.png" % key(name, str(mt)))
+    if os.path.exists(out):
+        return out
+    if Image is None:
+        return None
+    try:
+        os.makedirs(CACHE, exist_ok=True)
+        w, h = 168, 56
+        im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rounded_rectangle((0, 0, w - 1, h - 1), radius=14, fill=c.get("BG", "#2e3440"),
+                            outline=c.get("BG_HI", "#434c5e"), width=2)
+        dots = [c.get(k) for k in ("ACCENT", "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA")]
+        dots = [x for x in dots if x]
+        step = (w - 24) / max(len(dots), 1)
+        for i, col in enumerate(dots):
+            cx = 12 + step * i + step / 2
+            d.ellipse((cx - 10, h / 2 - 10, cx + 10, h / 2 + 10), fill=col)
+        tmp = out + ".tmp"
+        im.save(tmp, "PNG")
+        os.replace(tmp, out)
+        return out
+    except Exception:
+        return None
+
+
+def main(argv):
+    if len(argv) < 3 or argv[1] not in ("wall", "theme"):
+        print(__doc__)
+        return 1
+    fn = wall if argv[1] == "wall" else theme
+    for item in argv[2:]:
+        print("%s\t%s" % (item, fn(item) or ""))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

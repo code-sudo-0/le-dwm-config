@@ -1,0 +1,637 @@
+#!/usr/bin/env python3
+"""le-dock - a macOS-style dock for niri (GTK4 + layer-shell).
+
+  * pinned apps (~/.config/niri/dock-apps) plus every running app
+  * a dot under running apps, a brighter dot under the focused one
+  * new apps appear when they start; unpinned ones vanish when they close
+  * icons bounce when an app is launching or asks for attention
+  * hover enlarges an icon (no layout shift)
+  * click: focus (cycles through the app's windows) or launch
+    middle click: new window, right click: menu (windows, pin, quit)
+
+  le-dock            run the dock
+  le-dock --check    exit 0 when GTK4 + gtk4-layer-shell are usable
+  le-dock --selftest run the logic tests (no GUI needed)
+
+The logic (desktop files, matching, state) does not need GTK.
+"""
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import threading
+import time
+
+HOME = os.path.expanduser("~")
+CONF = os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config"))
+PINS = os.path.join(CONF, "niri", "dock-apps")
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".local", "state")), "le-dwm")
+
+
+# --------------------------------------------------------------------------
+# core logic (no GTK)
+# --------------------------------------------------------------------------
+def data_dirs():
+    dirs = [os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share"))]
+    dirs += os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
+    dirs += ["/run/current-system/sw/share", os.path.join(HOME, ".nix-profile", "share"),
+             "/var/lib/flatpak/exports/share", os.path.join(HOME, ".local/share/flatpak/exports/share")]
+    seen, out = set(), []
+    for d in dirs:
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def parse_desktop(path):
+    entry = {"id": os.path.basename(path), "path": path, "name": "", "icon": "", "exec": "",
+             "wmclass": "", "nodisplay": False, "actions": []}
+    in_main = False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("["):
+                    in_main = line == "[Desktop Entry]"
+                    continue
+                if not in_main or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                if k == "Name" and not entry["name"]:
+                    entry["name"] = v
+                elif k == "Icon" and not entry["icon"]:
+                    entry["icon"] = v
+                elif k == "Exec" and not entry["exec"]:
+                    entry["exec"] = v
+                elif k == "StartupWMClass":
+                    entry["wmclass"] = v
+                elif k in ("NoDisplay", "Hidden") and v.lower() == "true":
+                    entry["nodisplay"] = True
+    except OSError:
+        return None
+    return entry if entry["name"] or entry["exec"] else None
+
+
+class Catalog:
+    def __init__(self, dirs=None):
+        self.entries = {}
+        for d in (dirs or [os.path.join(x, "applications") for x in data_dirs()]):
+            if not os.path.isdir(d):
+                continue
+            for root, _, files in os.walk(d):
+                for fn in files:
+                    if fn.endswith(".desktop"):
+                        e = parse_desktop(os.path.join(root, fn))
+                        if e and fn not in self.entries:
+                            self.entries[fn] = e
+
+    @staticmethod
+    def _norm(s):
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    def match(self, app_id):
+        """desktop entry for a niri app_id, or None"""
+        if not app_id:
+            return None
+        cands = [app_id + ".desktop", app_id.lower() + ".desktop"]
+        for c in cands:
+            if c in self.entries:
+                return self.entries[c]
+        n = self._norm(app_id)
+        for e in self.entries.values():
+            if e["wmclass"] and self._norm(e["wmclass"]) == n:
+                return e
+        for fn, e in self.entries.items():
+            if self._norm(fn[:-8]) == n or self._norm(fn[:-8].split(".")[-1]) == n:
+                return e
+        for fn, e in self.entries.items():
+            ex = e["exec"].split()
+            if ex and self._norm(os.path.basename(ex[0])) == n:
+                return e
+        return None
+
+
+def read_pins(path=PINS):
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+    except OSError:
+        return []
+    return [l if l.endswith(".desktop") else l + ".desktop" for l in lines]
+
+
+def write_pins(pins, path=PINS):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(pins) + ("\n" if pins else ""))
+
+
+def exec_argv(entry):
+    cmd = re.sub(r"%[a-zA-Z%]", "", entry["exec"]).strip()
+    try:
+        return shlex.split(cmd)
+    except ValueError:
+        return cmd.split()
+
+
+class Item:
+    """one icon in the dock"""
+    def __init__(self, key, entry, app_id=""):
+        self.key = key
+        self.entry = entry
+        self.app_id = app_id
+        self.pinned = False
+        self.windows = []      # [{id, title, focused, urgent}]
+        self.launching = False
+
+    @property
+    def name(self):
+        if self.entry and self.entry["name"]:
+            return self.entry["name"]
+        return self.app_id or self.key
+
+    @property
+    def running(self):
+        return bool(self.windows)
+
+    @property
+    def focused(self):
+        return any(w["focused"] for w in self.windows)
+
+    @property
+    def urgent(self):
+        return any(w["urgent"] for w in self.windows)
+
+
+class Model:
+    def __init__(self, catalog, pins):
+        self.catalog = catalog
+        self.pins = list(pins)
+        self.windows = {}      # id -> dict
+
+    def apply(self, ev):
+        """feed one niri event-stream object"""
+        if "WindowsChanged" in ev:
+            self.windows = {w["id"]: self._win(w) for w in ev["WindowsChanged"]["windows"]}
+        elif "WindowOpenedOrChanged" in ev:
+            w = ev["WindowOpenedOrChanged"]["window"]
+            self.windows[w["id"]] = self._win(w)
+            if w.get("is_focused"):
+                self._focus(w["id"])
+        elif "WindowClosed" in ev:
+            self.windows.pop(ev["WindowClosed"]["id"], None)
+        elif "WindowFocusChanged" in ev:
+            self._focus(ev["WindowFocusChanged"].get("id"))
+        elif "WindowUrgencyChanged" in ev:
+            u = ev["WindowUrgencyChanged"]
+            if u["id"] in self.windows:
+                self.windows[u["id"]]["urgent"] = bool(u["urgent"])
+
+    @staticmethod
+    def _win(w):
+        return {"id": w["id"], "app_id": w.get("app_id") or "", "title": w.get("title") or "",
+                "focused": bool(w.get("is_focused")), "urgent": bool(w.get("is_urgent"))}
+
+    def _focus(self, wid):
+        for k, w in self.windows.items():
+            w["focused"] = (k == wid)
+
+    def items(self):
+        out, by_key = [], {}
+        for base in self.pins:
+            e = self.catalog.entries.get(base)
+            it = Item(base, e)
+            it.pinned = True
+            out.append(it)
+            by_key[base] = it
+        for w in sorted(self.windows.values(), key=lambda x: x["id"]):
+            e = self.catalog.match(w["app_id"])
+            key = e["id"] if e else "app:" + w["app_id"]
+            it = by_key.get(key)
+            if it is None:
+                it = Item(key, e, w["app_id"])
+                out.append(it)
+                by_key[key] = it
+            if not it.app_id:
+                it.app_id = w["app_id"]
+            it.windows.append(w)
+        return out
+
+
+def window_cycle_target(item):
+    """window id to focus when the icon is clicked"""
+    ws = sorted(item.windows, key=lambda w: w["id"])
+    if not ws:
+        return None
+    for i, w in enumerate(ws):
+        if w["focused"]:
+            return ws[(i + 1) % len(ws)]["id"] if len(ws) > 1 else w["id"]
+    return ws[0]["id"]
+
+
+def read_theme():
+    name = "nord"
+    try:
+        name = open(os.path.join(CONF, "niri", "theme")).read().strip() or name
+    except OSError:
+        pass
+    vals = {"BG": "#2e3440", "BG_HI": "#434c5e", "FG": "#d8dee9", "ACCENT": "#88c0d0"}
+    try:
+        with open(os.path.join(CONF, "dwm-theme", "themes", name + ".theme")) as f:
+            for line in f:
+                m = re.match(r'^(BG|BG_HI|FG|ACCENT)="?(#[0-9a-fA-F]{6})', line.strip())
+                if m:
+                    vals[m.group(1)] = m.group(2)
+    except OSError:
+        pass
+    return vals
+
+
+def hex_rgba(h, a):
+    h = h.lstrip("#")
+    return "rgba(%d,%d,%d,%.2f)" % (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), a)
+
+
+def niri(*args, check=False):
+    try:
+        return subprocess.run(["niri", "msg", *args], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def dock_scale():
+    try:
+        r = subprocess.run(["niri-size", "scale", "dock"], capture_output=True, text=True, timeout=5)
+        return max(0.5, min(2.0, float(r.stdout.strip())))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 1.0
+
+
+def spawn_entry(entry, extra=None):
+    argv = exec_argv(entry) + (extra or [])
+    if not argv:
+        return
+    subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+# --------------------------------------------------------------------------
+# self test
+# --------------------------------------------------------------------------
+def selftest():
+    import tempfile
+    d = tempfile.mkdtemp()
+    apps = os.path.join(d, "applications")
+    os.makedirs(apps)
+
+    def mk(fn, name, exe, icon="x", extra=""):
+        open(os.path.join(apps, fn), "w").write(
+            "[Desktop Entry]\nName=%s\nExec=%s %%U\nIcon=%s\n%s\n" % (name, exe, icon, extra))
+    mk("kitty.desktop", "Kitty", "kitty")
+    mk("org.mozilla.firefox.desktop", "Firefox", "firefox")
+    mk("thunar.desktop", "Thunar", "thunar", extra="StartupWMClass=Thunar")
+    cat = Catalog([apps])
+    assert cat.match("kitty")["name"] == "Kitty"
+    assert cat.match("firefox")["name"] == "Firefox"
+    assert cat.match("Thunar")["name"] == "Thunar"
+    assert cat.match("nope") is None
+    assert exec_argv(cat.entries["kitty.desktop"]) == ["kitty"]
+    m = Model(cat, ["kitty.desktop", "thunar.desktop"])
+    assert [i.running for i in m.items()] == [False, False]
+    m.apply({"WindowsChanged": {"windows": [
+        {"id": 1, "app_id": "kitty", "title": "a", "is_focused": True, "is_urgent": False},
+        {"id": 2, "app_id": "firefox", "title": "b", "is_focused": False, "is_urgent": False}]}})
+    its = m.items()
+    assert [i.key for i in its] == ["kitty.desktop", "thunar.desktop", "org.mozilla.firefox.desktop"], [i.key for i in its]
+    assert its[0].running and its[0].focused and not its[1].running and its[2].running
+    m.apply({"WindowOpenedOrChanged": {"window": {"id": 3, "app_id": "kitty", "title": "c", "is_focused": True}}})
+    its = m.items()
+    assert len(its[0].windows) == 2 and its[0].focused
+    assert window_cycle_target(its[0]) == 1          # focused is 3 -> wraps to 1
+    m.apply({"WindowFocusChanged": {"id": 2}})
+    assert m.items()[2].focused and not m.items()[0].focused
+    m.apply({"WindowUrgencyChanged": {"id": 3, "urgent": True}})
+    assert m.items()[0].urgent
+    m.apply({"WindowClosed": {"id": 2}})
+    assert [i.key for i in m.items()] == ["kitty.desktop", "thunar.desktop"]
+    m.apply({"WindowOpenedOrChanged": {"window": {"id": 9, "app_id": "weird-app", "title": "", "is_focused": False}}})
+    assert m.items()[-1].key == "app:weird-app" and m.items()[-1].name == "weird-app"
+    p = os.path.join(d, "pins")
+    write_pins(["a.desktop", "b.desktop"], p)
+    assert read_pins(p) == ["a.desktop", "b.desktop"]
+    print("le-dock selftest ok")
+
+
+# --------------------------------------------------------------------------
+# GUI
+# --------------------------------------------------------------------------
+def load_gtk():
+    import ctypes
+    for name in ("libgtk4-layer-shell.so", "libgtk4-layer-shell.so.0"):
+        try:
+            ctypes.CDLL(name)
+            break
+        except OSError:
+            continue
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    gi.require_version("Gtk4LayerShell", "1.0")
+    from gi.repository import Gtk, Gdk, GLib, Gio, Gtk4LayerShell
+    return Gtk, Gdk, GLib, Gio, Gtk4LayerShell
+
+
+def run_gui():
+    Gtk, Gdk, GLib, Gio, LS = load_gtk()
+    import math
+
+    os.makedirs(STATE_DIR, exist_ok=True)
+    catalog = Catalog()
+    model = Model(catalog, read_pins())
+    scale = dock_scale()
+    ICON = int(48 * scale)
+    PAD = int(10 * scale)
+    HEAD = int(ICON * 0.7)          # bounce headroom above the dock
+    theme = read_theme()
+
+    css = """
+    window.le-dock { background: transparent; }
+    .pill { background: %(bg)s; border: 1px solid %(bd)s; border-radius: %(rad)dpx; padding: %(pad)dpx; }
+    .cell { padding: 0 %(gap)dpx; }
+    .ico { transition: transform 140ms ease-out; }
+    .cell:hover .ico { transform: translateY(-%(lift)dpx) scale(1.3); }
+    .dot { background: %(fg)s; border-radius: 3px; min-width: 5px; min-height: 5px; opacity: 0; }
+    .dot.on { opacity: 0.55; }
+    .dot.focus { opacity: 1; background: %(ac)s; }
+    .tile { background: %(hi)s; color: %(fg)s; border-radius: %(trad)dpx; font-weight: bold; }
+    popover > contents { background: %(bg)s; border-radius: 12px; }
+    popover button { color: %(fg)s; background: transparent; border-radius: 8px; padding: 4px 10px; }
+    popover button:hover { background: %(hi)s; }
+    """ % dict(bg=hex_rgba(theme["BG"], 0.78), bd=hex_rgba(theme["FG"], 0.12), fg=theme["FG"],
+               ac=theme["ACCENT"], hi=theme["BG_HI"], rad=int(ICON * 0.38), pad=int(6 * scale),
+               gap=int(4 * scale), lift=int(ICON * 0.12), trad=int(ICON * 0.22))
+
+    class Dock(Gtk.Application):
+        def __init__(self):
+            super().__init__(application_id="dev.le.dock")
+            self.cells = {}
+            self.bounces = {}
+
+        def do_activate(self):
+            prov = Gtk.CssProvider()
+            prov.load_from_string(css) if hasattr(prov, "load_from_string") else prov.load_from_data(css.encode())
+            Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), prov,
+                                                      Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            self.win = Gtk.Window(application=self)
+            self.win.add_css_class("le-dock")
+            LS.init_for_window(self.win)
+            LS.set_layer(self.win, LS.Layer.TOP)
+            LS.set_anchor(self.win, LS.Edge.BOTTOM, True)
+            LS.set_margin(self.win, LS.Edge.BOTTOM, int(8 * scale))
+            LS.set_namespace(self.win, "le-dock")
+            LS.set_keyboard_mode(self.win, LS.KeyboardMode.NONE)
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            spacer = Gtk.Box()
+            spacer.set_size_request(1, HEAD)
+            outer.append(spacer)
+            self.pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            self.pill.add_css_class("pill")
+            self.pill.set_halign(Gtk.Align.CENTER)
+            outer.append(self.pill)
+            self.win.set_child(outer)
+            self.win.present()
+            GLib.idle_add(self.rebuild)
+            threading.Thread(target=self.stream, daemon=True).start()
+            mon = Gio.File.new_for_path(PINS).monitor_file(Gio.FileMonitorFlags.NONE, None) \
+                if os.path.exists(PINS) else None
+            if mon:
+                mon.connect("changed", lambda *a: self.reload_pins())
+                self._mon = mon
+            GLib.timeout_add(1500, self.watch_pins_file)
+            self._pins_mtime = self.pins_mtime()
+
+        # ---- events -------------------------------------------------------
+        def pins_mtime(self):
+            try:
+                return os.stat(PINS).st_mtime
+            except OSError:
+                return 0
+
+        def watch_pins_file(self):
+            m = self.pins_mtime()
+            if m != self._pins_mtime:
+                self._pins_mtime = m
+                self.reload_pins()
+            return True
+
+        def reload_pins(self):
+            model.pins = read_pins()
+            self.rebuild()
+
+        def stream(self):
+            while True:
+                try:
+                    p = subprocess.Popen(["niri", "msg", "--json", "event-stream"], stdout=subprocess.PIPE,
+                                         stderr=subprocess.DEVNULL, text=True)
+                    for line in p.stdout:
+                        try:
+                            ev = json.loads(line)
+                        except ValueError:
+                            continue
+                        GLib.idle_add(self.on_event, ev)
+                except OSError:
+                    pass
+                time.sleep(2)
+
+        def on_event(self, ev):
+            before = {i.key: (i.running, i.urgent) for i in model.items()}
+            model.apply(ev)
+            after = model.items()
+            for it in after:
+                was = before.get(it.key)
+                if it.running and (was is None or not was[0]):
+                    self.bounce(it.key, 3)           # new app appeared
+                    self.launching_done(it.key)
+                if it.urgent and not (was and was[1]):
+                    self.bounce(it.key, 6)
+            self.rebuild()
+            return False
+
+        # ---- drawing ------------------------------------------------------
+        def rebuild(self):
+            child = self.pill.get_first_child()
+            while child:
+                nxt = child.get_next_sibling()
+                self.pill.remove(child)
+                child = nxt
+            self.cells = {}
+            for it in model.items():
+                self.pill.append(self.make_cell(it))
+            return False
+
+        def icon_widget(self, it):
+            icon = Gtk.Image()
+            icon.set_pixel_size(ICON)
+            theme_ = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+            name = it.entry["icon"] if it.entry else ""
+            names = [n for n in (name, it.app_id, (it.app_id or "").lower(), it.key.replace(".desktop", "")) if n]
+            for n in names:
+                if n.startswith("/") and os.path.exists(n):
+                    icon.set_from_file(n)
+                    return icon
+                if theme_.has_icon(n):
+                    icon.set_from_icon_name(n)
+                    return icon
+            tile = Gtk.Label(label=(it.name[:1] or "?").upper())
+            tile.add_css_class("tile")
+            tile.set_size_request(ICON, ICON)
+            return tile
+
+        def make_cell(self, it):
+            cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            cell.add_css_class("cell")
+            holder = Gtk.Box()
+            holder.add_css_class("ico")
+            holder.set_size_request(ICON, ICON)
+            icon = self.icon_widget(it)
+            holder.append(icon)
+            cell.append(holder)
+            dot = Gtk.Box()
+            dot.add_css_class("dot")
+            dot.set_halign(Gtk.Align.CENTER)
+            dot.set_margin_top(2)
+            if it.running:
+                dot.add_css_class("on")
+            if it.focused:
+                dot.add_css_class("focus")
+            cell.append(dot)
+            cell.set_tooltip_text(it.name)
+            left = Gtk.GestureClick()
+            left.set_button(1)
+            left.connect("released", lambda *a, i=it: self.activate(i))
+            cell.add_controller(left)
+            mid = Gtk.GestureClick()
+            mid.set_button(2)
+            mid.connect("released", lambda *a, i=it: self.launch(i))
+            cell.add_controller(mid)
+            right = Gtk.GestureClick()
+            right.set_button(3)
+            right.connect("released", lambda g, n, x, y, i=it, c=cell: self.menu(i, c))
+            cell.add_controller(right)
+            self.cells[it.key] = (cell, icon)
+            return cell
+
+        # ---- bounce -------------------------------------------------------
+        def bounce(self, key, times):
+            if key not in self.cells:
+                return
+            start = time.monotonic()
+            dur = 0.45 * times
+            self.bounces[key] = start
+            prov = Gtk.CssProvider()
+            cell, icon = self.cells[key]
+            icon.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
+            def tick(widget, clock):
+                t = time.monotonic() - start
+                if t >= dur or self.bounces.get(key) != start:
+                    css_ = "* { transform: none; }"
+                    done = True
+                else:
+                    ph = (t % 0.45) / 0.45
+                    h = abs(math.sin(ph * math.pi)) * HEAD * 0.9
+                    css_ = "* { transform: translateY(-%dpx); }" % h
+                    done = False
+                try:
+                    prov.load_from_string(css_) if hasattr(prov, "load_from_string") else prov.load_from_data(css_.encode())
+                except Exception:
+                    return False
+                return not done
+            icon.add_tick_callback(tick)
+
+        def launching_done(self, key):
+            pass
+
+        # ---- actions ------------------------------------------------------
+        def activate(self, it):
+            if it.running:
+                wid = window_cycle_target(it)
+                if wid is not None:
+                    niri("action", "focus-window", "--id", str(wid))
+            else:
+                self.launch(it)
+
+        def launch(self, it):
+            if not it.entry:
+                return
+            spawn_entry(it.entry)
+            self.bounce(it.key, 5)
+
+        def menu(self, it, cell):
+            pop = Gtk.Popover()
+            pop.set_parent(cell)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            title = Gtk.Label(label=it.name)
+            title.set_margin_bottom(4)
+            box.append(title)
+
+            def add(label, fn):
+                b = Gtk.Button(label=label)
+                b.set_has_frame(False)
+                b.connect("clicked", lambda *_: (pop.popdown(), fn()))
+                box.append(b)
+            add("New window", lambda: self.launch(it))
+            for w in it.windows:
+                add("› " + (w["title"] or it.name)[:40], lambda w=w: niri("action", "focus-window", "--id", str(w["id"])))
+            if it.entry:
+                if it.pinned:
+                    add("Unpin from dock", lambda: self.unpin(it))
+                else:
+                    add("Keep in dock", lambda: self.pin(it))
+            if it.running:
+                add("Quit", lambda: [niri("action", "close-window", "--id", str(w["id"])) for w in it.windows])
+            pop.set_child(box)
+            pop.popup()
+
+        def pin(self, it):
+            pins = read_pins()
+            if it.entry["id"] not in pins:
+                pins.append(it.entry["id"])
+                write_pins(pins)
+            model.pins = pins
+            self.rebuild()
+
+        def unpin(self, it):
+            pins = [p for p in read_pins() if p != it.key]
+            write_pins(pins)
+            model.pins = pins
+            self.rebuild()
+
+    return Dock().run([])
+
+
+def main():
+    arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg == "--selftest":
+        selftest()
+        return 0
+    if arg == "--check":
+        try:
+            if not (os.environ.get("WAYLAND_DISPLAY")):
+                pass
+            Gtk, Gdk, GLib, Gio, LS = load_gtk()
+            return 0
+        except Exception as e:  # noqa: BLE001
+            print("le-dock: GTK4 / gtk4-layer-shell not usable: %s" % e, file=sys.stderr)
+            return 1
+    if arg in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    return run_gui() or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -13,6 +13,7 @@
 # niri-display writes ~/.config/niri/display.kdl, which config.kdl includes, so they survive a restart.
 # After a mode, scale or rotation change you get 12 seconds to confirm; otherwise the old setting returns.
 set -u
+export PATH="$HOME/.local/bin:$PATH"
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/niri"
 SAVED="$CONF/display.conf"      # lines: <screen> <key> <value>
@@ -112,17 +113,14 @@ for m in modes:
 
 # ---- menus
 
-menu() {   # menu <prompt>   (items on stdin) -> chosen line
-	if command -v fuzzel >/dev/null 2>&1; then fuzzel --dmenu --prompt "$1  "
-	elif command -v rofi >/dev/null 2>&1; then rofi -dmenu -p "$1"
-	elif command -v dmenu >/dev/null 2>&1; then dmenu -i -p "$1"
-	else return 1; fi
+menu() {   # menu <prompt>   (items on stdin: "label" or "label<TAB>icon") -> chosen label
+	niri-menu -p "$1" --lines 8
 }
 
 # after a change: 12 seconds to keep it, otherwise run the undo command
 confirm_or_revert() {   # confirm_or_revert <undo command...>
 	local ans
-	ans=$(printf '%s\n' "Keep these settings" "Revert" | timeout 12 bash -c "$(declare -f menu); menu 'Keep display settings? (reverts in 12 s)'" 2>/dev/null || true)
+	ans=$(printf '%s\n' "Keep these settings"$'\t'dialog-ok "Revert"$'\t'edit-undo | timeout 12 niri-menu -p "Keep display settings? (reverts in 12 s)" --lines 2 2>/dev/null || true)
 	if [[ $ans != "Keep these settings" ]]; then
 		"$@"
 		msg "reverted"
@@ -168,24 +166,24 @@ screen_menu() {   # screen_menu <screen>
 		cur=$(screens | awk -F'\t' -v s="$s" '$1==s{print $3}')
 		scale=$(screens | awk -F'\t' -v s="$s" '$1==s{print $4}')
 		choice=$(printf '%s\n' \
-			"Resolution and refresh rate   ${cur:-?}" \
-			"Scale                         ${scale:-?}" \
-			"Rotation" \
-			"Turn off this screen" \
-			"Turn on this screen" \
-			"Back" | menu "$s") || return 0
+			"Resolution and refresh rate   ${cur:-?}"$'\t'video-display \
+			"Scale                         ${scale:-?}"$'\t'zoom-in \
+			"Rotation"$'\t'object-rotate-right \
+			"Turn off this screen"$'\t'system-shutdown \
+			"Turn on this screen"$'\t'video-display \
+			"Back"$'\t'go-previous | menu "$s") || return 0
 		case $choice in
 			Resolution*)
-				sel=$(modes_of "$s" | awk -v c="$cur" '{ print ($0==c ? "✓ " : "  ") $0 }' | menu "Mode") || continue
+				sel=$(modes_of "$s" | awk -v c="$cur" '{ print ($0==c ? "✓ " : "  ") $0 "\tvideo-display" }' | menu "Mode") || continue
 				sel=${sel#✓ }; sel=${sel#  }
 				[[ -n $sel ]] && apply_mode "$s" "$sel"
 				;;
 			Scale*)
-				sel=$(printf '%s\n' 1 1.25 1.5 1.75 2 2.5 3 | menu "Scale") || continue
+				sel=$(printf '%s\tzoom-in\n' 1 1.25 1.5 1.75 2 2.5 3 | menu "Scale") || continue
 				[[ -n $sel ]] && apply_scale "$s" "$sel"
 				;;
 			Rotation*)
-				sel=$(printf '%s\n' normal 90 180 270 | menu "Rotation") || continue
+				sel=$(printf '%s\tobject-rotate-right\n' normal 90 180 270 | menu "Rotation") || continue
 				[[ -n $sel ]] && apply_rotate "$s" "$sel"
 				;;
 			"Turn off"*) apply_power "$s" off ;;
@@ -205,8 +203,8 @@ main_menu() {
 		return 0
 	fi
 	while :; do
-		sel=$({ printf '%s\n' "$list" | awk -F'\t' '{ printf "%s   %s   %s   scale %s\n", $1, $2, $3, $4 }'
-			echo "Forget saved display settings"; } | menu "Screen") || return 0
+		sel=$({ printf '%s\n' "$list" | awk -F'\t' '{ printf "%s   %s   %s   scale %s\tvideo-display\n", $1, $2, $3, $4 }'
+			printf 'Forget saved display settings\tedit-clear\n'; } | menu "Screen") || return 0
 		case $sel in
 			Forget*) do_reset ;;
 			"") return 0 ;;

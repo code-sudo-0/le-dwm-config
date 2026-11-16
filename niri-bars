@@ -4,6 +4,9 @@
 #   niri-bars start      start the top status bar and the bottom dock
 #   niri-bars restart    restart both bars
 #   niri-bars toggle     show/hide both bars (Super+B)
+#   niri-bars dock hide|show|toggle   hide only the dock (Super+Ctrl+B)
+#   niri-bars top hide|show|toggle    hide only the top bar (Super+Alt+B)
+#   niri-bars style floating|docked   top bar: rounded with a gap, or square and stuck to the top edge
 #   niri-bars menu       small menu (Super+Shift+B)
 #   niri-bars size [compact|small|normal|large]   show or change the bar and dock size
 set -u
@@ -43,15 +46,40 @@ start_top() {
 	setsid waybar -c "$TOP_CFG" -s "$TOP_STYLE" >/dev/null 2>&1 &
 }
 
+flag() { niri-size kv get "$1" on 2>/dev/null || echo on; }   # DOCK / TOP: on or off
+
 start_all() {
-	start_top
+	[[ $(flag TOP) == off ]] || start_top
+	[[ $(flag DOCK) == off ]] && return 0
 	niri-dock start 2>/dev/null || "$HOME/.local/bin/niri-dock" start 2>/dev/null || warn "could not start the dock"
 }
 
 restart_all() {
-	pkill -x waybar 2>/dev/null; pkill -x .waybar-wrapped 2>/dev/null; true
+	pkill -x waybar 2>/dev/null; pkill -x .waybar-wrapped 2>/dev/null
+	niri-dock stop 2>/dev/null
 	sleep 0.3
 	start_all
+}
+
+# hide or show one bar and remember it (the flag survives restarts and pinning apps)
+set_bar() {   # set_bar dock|top hide|show|toggle
+	local which=$1 act=$2 key cur
+	[[ $which == dock ]] && key=DOCK || key=TOP
+	cur=$(flag "$key")
+	case $act in
+		toggle) [[ $cur == off ]] && act=show || act=hide ;;
+		hide|show) ;;
+		*) warn "usage: niri-bars $which hide|show|toggle"; return 1 ;;
+	esac
+	if [[ $act == hide ]]; then
+		niri-size kv set "$key" off
+		if [[ $which == dock ]]; then niri-dock stop 2>/dev/null
+		else pkill -f "$TOP_PATTERN" 2>/dev/null; fi
+	else
+		niri-size kv set "$key" on
+		if [[ $which == dock ]]; then niri-dock start 2>/dev/null; else start_top; fi
+	fi
+	return 0
 }
 
 toggle_all() {
@@ -59,26 +87,21 @@ toggle_all() {
 	pkill -USR1 -x waybar 2>/dev/null; pkill -USR1 -x .waybar-wrapped 2>/dev/null; true
 }
 
-menu() {
-	local prompt=$1 input=$2 sel
-	if command -v fuzzel >/dev/null 2>&1; then
-		sel=$(printf '%s\n' "$input" | fuzzel --dmenu --prompt "$prompt  ")
-	elif command -v rofi >/dev/null 2>&1; then
-		sel=$(printf '%s\n' "$input" | rofi -dmenu -p "$prompt")
-	else
-		sel=$(printf '%s\n' "$input" | dmenu -i -p "$prompt")
-	fi
-	printf '%s\n' "${sel:-}"
-}
-
 bar_menu() {
 	local choice
-	choice=$(menu "Bars" $'Settings\nRestart bars\nToggle bars\nDock applications\nTheme picker\nWallpaper picker')
+	choice=$(printf '%s\n' \
+		"Settings"$'\t'preferences-system \
+		"Show / hide the dock"$'\t'view-grid-symbolic \
+		"Show / hide the top bar"$'\t'view-list-symbolic \
+		"Restart bars"$'\t'view-refresh \
+		"Theme picker"$'\t'preferences-desktop-theme \
+		"Wallpaper picker"$'\t'preferences-desktop-wallpaper \
+		| niri-menu -p Bars --lines 6) || return 0
 	case $choice in
 		"Settings") niri-settings ;;
+		"Show / hide the dock") set_bar dock toggle ;;
+		"Show / hide the top bar") set_bar top toggle ;;
 		"Restart bars") restart_all; say "bars restarted" ;;
-		"Toggle bars") toggle_all ;;
-		"Dock applications") niri-dock menu ;;
 		"Theme picker") niri-theme pick ;;
 		"Wallpaper picker") niri-wall pick ;;
 		*) return 0 ;;
@@ -90,13 +113,20 @@ case "${1:-start}" in
 	restart) restart_all ;;
 	toggle) toggle_all ;;
 	menu) bar_menu ;;
-	size)
-		if [[ -n ${2:-} ]]; then
+	size)   # niri-bars size [top|dock] [compact|small|normal|large]
+		if [[ ${2:-} == top || ${2:-} == dock ]]; then
+			if [[ -n ${3:-} ]]; then niri-size set "$2" "$3" || exit 1; restart_all; else niri-size get "$2"; fi
+		elif [[ -n ${2:-} ]]; then
 			niri-size set "$2" || exit 1
 			restart_all
 		else
 			niri-size get
 		fi
 		;;
-	*) warn "usage: niri-bars [start|restart|toggle|menu|size [compact|small|normal|large]]"; exit 1 ;;
+	dock) set_bar dock "${2:-toggle}" ;;
+	top) set_bar top "${2:-toggle}" ;;
+	style)
+		if [[ -n ${2:-} ]]; then niri-size style "$2" || exit 1; restart_all; else niri-size style; fi
+		;;
+	*) warn "usage: niri-bars [start|restart|toggle|menu|size [top|dock] [size]|dock hide|show|toggle|top hide|show|toggle|style floating|docked]"; exit 1 ;;
 esac

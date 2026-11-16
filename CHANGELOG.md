@@ -2,6 +2,16 @@
 
 ## Unreleased (releases are named by date and patch, e.g. 2026-10-28-patch1)
 
+- Niri: `le-dock`, a macOS-style dock (GTK4 + layer-shell): running apps appear (and unpinned ones vanish when
+  closed), dots under running/focused apps, bounce on launch and urgent, hover zoom, click to focus/cycle,
+  middle click for a new window, right click menu (windows, pin, quit). Falls back to the waybar dock when
+  GTK4/gtk4-layer-shell is missing (`niri-bars` / settings: Dock > look).
+- Niri bars: size is set per bar (top and dock), the dock can be hidden alone (`Super+Ctrl+B`), the top bar
+  too (`Super+Alt+B`), and the top bar can be docked flush to the top edge with square corners
+  (Settings > Top bar > style).
+- Niri menus use icons (`niri-menu`); the wallpaper picker shows thumbnails and the theme picker colour
+  swatches (`niri-thumbs`). `niri-theme` also writes a matching `fuzzel.ini`.
+
 - Niri settings menu (`Super+Shift+D` or the gear on the top bar): theme and auto theme, wallpaper,
   bar and dock size, display, window gaps, rounded corners, terminal opacity, bars, key list.
 - Niri bar and dock size: `compact`, `small`, `normal`, `large` (`niri-bars size ...`). The bar files stay

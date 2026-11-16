@@ -21,11 +21,10 @@ msg() {
 	return 0
 }
 
-menu() {   # menu <prompt>   (items on stdin) -> chosen line
-	if command -v fuzzel >/dev/null 2>&1; then fuzzel --dmenu --prompt "$1  " --width 44 --lines 12
-	elif command -v rofi >/dev/null 2>&1; then rofi -dmenu -p "$1"
-	elif command -v dmenu >/dev/null 2>&1; then dmenu -i -l 12 -p "$1"
-	else msg "install fuzzel, rofi or dmenu to use the settings menu"; return 1; fi
+# every picker goes through niri-menu (themed, with icons); items are "label<TAB>icon"
+menu() {   # menu <prompt> [niri-menu options]   (items on stdin) -> chosen label
+	local prompt=$1; shift
+	niri-menu -p "$prompt" "$@"
 }
 
 # ---- saved values
@@ -83,13 +82,18 @@ set_kitty_opacity() {
 
 # ---- submenus
 
+mark() {   # mark <current>  (labels on stdin) -> labels with a check on the current one
+	awk -v c="$1" -F'\t' '{ printf "%s%s\t%s\n", ($1==c ? "✓ " : "  "), $1, $2 }'
+}
+unmark() { local x=${1#✓ }; printf '%s\n' "${x#  }"; }
+
 theme_menu() {
 	local choice t
 	choice=$(printf '%s\n' \
-		"Choose a theme" \
-		"Auto theme (follow the wallpaper): $(auto_state)" \
-		"Theme from the current wallpaper, once" \
-		"Back" | menu "Theme  [$(theme_name)]") || return 0
+		"Choose a theme"$'\t'preferences-desktop-theme \
+		"Auto theme (follow the wallpaper): $(auto_state)"$'\t'preferences-desktop-wallpaper \
+		"Theme from the current wallpaper, once"$'\t'image-x-generic \
+		"Back"$'\t'go-previous | menu "Theme  [$(theme_name)]" --lines 4) || return 0
 	case $choice in
 		"Choose a theme") niri-theme pick ;;
 		Auto*)
@@ -105,48 +109,101 @@ theme_menu() {
 
 wallpaper_menu() {
 	local choice
-	choice=$(printf '%s\n' "Choose a wallpaper" "Random wallpaper" "Back" | menu "Wallpaper") || return 0
+	choice=$(printf '%s\n' \
+		"Choose a wallpaper"$'\t'preferences-desktop-wallpaper \
+		"Random wallpaper"$'\t'media-playlist-shuffle \
+		"Back"$'\t'go-previous | menu "Wallpaper" --lines 3) || return 0
 	case $choice in
 		"Choose a wallpaper") niri-wall pick ;;
 		"Random wallpaper") niri-wall random ;;
 	esac
 }
 
-size_menu() {
-	local cur choice
-	cur=$(size_name)
-	choice=$(printf '%s\n' compact small normal large | awk -v c="$cur" '{ print ($0==c ? "✓ " : "  ") $0 }' \
-		| menu "Bar and dock size") || return 0
-	choice=${choice#✓ }; choice=${choice#  }
-	[[ -n $choice ]] && niri-bars size "$choice"
+size_menu() {   # size_menu <top|dock|both>
+	local which=$1 cur choice arg=()
+	[[ $which == both ]] || arg=("$which")
+	cur=$(niri-size get "${arg[@]}" 2>/dev/null || echo normal)
+	choice=$(printf '%s\n' compact small normal large | awk '{print $0"\tview-fullscreen"}' | mark "$cur" \
+		| menu "Size: $which" --lines 4) || return 0
+	choice=$(unmark "$choice")
+	[[ -n $choice ]] && niri-bars size "${arg[@]}" "$choice"
+}
+
+onoff() { [[ $(niri-size kv get "$1" on 2>/dev/null) == off ]] && printf 'hidden' || printf 'shown'; }
+
+topbar_menu() {
+	local choice
+	while :; do
+		choice=$(printf '%s\n' \
+			"Size                $(niri-size get top)"$'\t'view-fullscreen \
+			"Style               $(niri-size style)  (floating or docked)"$'\t'view-list \
+			"Show / hide         $(onoff TOP)"$'\t'view-reveal \
+			"Back"$'\t'go-previous | menu "Top bar" --lines 4) || return 0
+		case $choice in
+			Size*) size_menu top ;;
+			Style*)
+				choice=$(printf '%s\n' \
+					"floating"$'\t'view-restore \
+					"docked"$'\t'view-fullscreen | mark "$(niri-size style)" | menu "Top bar style  (docked = square, stuck to the top)" --lines 2) || continue
+				choice=$(unmark "$choice")
+				[[ -n $choice ]] && niri-bars style "$choice"
+				;;
+			Show*) niri-bars top toggle ;;
+			*) return 0 ;;
+		esac
+	done
+}
+
+dock_menu() {
+	local choice engine
+	while :; do
+		engine=$(niri-size kv get DOCK_ENGINE gtk 2>/dev/null)
+		choice=$(printf '%s\n' \
+			"Size                $(niri-size get dock)"$'\t'view-fullscreen \
+			"Show / hide         $(onoff DOCK)"$'\t'view-reveal \
+			"Look                $([[ $engine == waybar ]] && echo simple || echo macOS)  (running apps, bounce)"$'\t'preferences-desktop-theme \
+			"Applications        pin or unpin"$'\t'view-app-grid \
+			"Restart the dock"$'\t'view-refresh \
+			"Back"$'\t'go-previous | menu "Dock" --lines 6) || return 0
+		case $choice in
+			Size*) size_menu dock ;;
+			Show*) niri-bars dock toggle ;;
+			Look*)
+				choice=$(printf '%s\n' \
+					"macOS"$'\t'view-app-grid \
+					"simple"$'\t'view-list | mark "$([[ $engine == waybar ]] && echo simple || echo macOS)" \
+					| menu "Dock look  (macOS: running apps, dots, bounce)" --lines 2) || continue
+				choice=$(unmark "$choice")
+				case $choice in
+					macOS) niri-size kv set DOCK_ENGINE gtk ;;
+					simple) niri-size kv set DOCK_ENGINE waybar ;;
+					*) continue ;;
+				esac
+				niri-dock stop 2>/dev/null; sleep 0.3; niri-dock start 2>/dev/null
+				;;
+			Applications*) niri-dock menu ;;
+			Restart*) niri-dock stop 2>/dev/null; sleep 0.3; niri-dock start 2>/dev/null ;;
+			*) return 0 ;;
+		esac
+	done
 }
 
 number_menu() {   # number_menu <prompt> <KEY> <default> <values...>
 	local prompt=$1 key=$2 def=$3 cur choice
 	shift 3
 	cur=$(get "$key" "$def")
-	choice=$(printf '%s\n' "$@" | awk -v c="$cur" '{ print ($0==c ? "✓ " : "  ") $0 }' | menu "$prompt") || return 0
-	choice=${choice#✓ }; choice=${choice#  }
+	choice=$(printf '%s\n' "$@" | awk '{print $0"\tview-fullscreen"}' | mark "$cur" | menu "$prompt" --lines 7) || return 0
+	choice=$(unmark "$choice")
 	[[ -n $choice ]] && put "$key" "$choice"
 }
 
 opacity_menu() {
 	local cur choice
 	cur=$(kitty_opacity)
-	choice=$(printf '%s\n' 1.0 0.95 0.9 0.85 0.8 0.7 0.6 | awk -v c="$cur" '{ print ($0==c ? "✓ " : "  ") $0 }' \
-		| menu "Terminal opacity") || return 0
-	choice=${choice#✓ }; choice=${choice#  }
+	choice=$(printf '%s\n' 1.0 0.95 0.9 0.85 0.8 0.7 0.6 | awk '{print $0"\tutilities-terminal"}' | mark "$cur" \
+		| menu "Terminal opacity" --lines 7) || return 0
+	choice=$(unmark "$choice")
 	[[ -n $choice ]] && set_kitty_opacity "$choice"
-}
-
-bars_menu() {
-	local choice
-	choice=$(printf '%s\n' "Show / hide the bars" "Restart the bars" "Dock applications" "Back" | menu "Bars") || return 0
-	case $choice in
-		Show*) niri-bars toggle ;;
-		Restart*) niri-bars restart ;;
-		Dock*) niri-dock menu ;;
-	esac
 }
 
 # ---- main loop
@@ -155,25 +212,25 @@ main() {
 	local choice
 	while :; do
 		choice=$(printf '%s\n' \
-			"Theme                 $(theme_name)  (auto: $(auto_state))" \
-			"Wallpaper" \
-			"Bar and dock size     $(size_name)" \
-			"Display               resolution, scale, rotation" \
-			"Window gaps           $(get GAPS $DEFAULT_GAPS)" \
-			"Rounded corners       $(get RADIUS $DEFAULT_RADIUS)" \
-			"Terminal opacity      $(kitty_opacity)" \
-			"Bars and dock" \
-			"Key list" \
-			"Quit" | menu "Settings") || return 0
+			"Theme                 $(theme_name)  (auto: $(auto_state))"$'\t'preferences-desktop-theme \
+			"Wallpaper"$'\t'preferences-desktop-wallpaper \
+			"Top bar               $(niri-size style), $(niri-size get top), $(onoff TOP)"$'\t'view-list \
+			"Dock                  $(niri-size get dock), $(onoff DOCK)"$'\t'view-app-grid \
+			"Display               resolution, scale, rotation"$'\t'video-display \
+			"Window gaps           $(get GAPS $DEFAULT_GAPS)"$'\t'preferences-system-windows \
+			"Rounded corners       $(get RADIUS $DEFAULT_RADIUS)"$'\t'window-new \
+			"Terminal opacity      $(kitty_opacity)"$'\t'utilities-terminal \
+			"Key list"$'\t'input-keyboard \
+			"Quit"$'\t'application-exit | menu "Settings" --lines 10 --width 46) || return 0
 		case $choice in
 			Theme*) theme_menu ;;
 			Wallpaper*) wallpaper_menu ;;
-			"Bar and dock"*) size_menu ;;
+			"Top bar"*) topbar_menu ;;
+			Dock*) dock_menu ;;
 			Display*) niri-display ;;
 			"Window gaps"*) number_menu "Window gaps" GAPS $DEFAULT_GAPS 0 6 10 14 18 24 ;;
 			"Rounded corners"*) number_menu "Corner radius" RADIUS $DEFAULT_RADIUS 0 6 10 14 18 24 ;;
 			"Terminal opacity"*) opacity_menu ;;
-			"Bars and dock"*) bars_menu ;;
 			"Key list"*) niri-keys ;;
 			*) return 0 ;;
 		esac
