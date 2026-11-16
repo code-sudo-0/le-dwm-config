@@ -192,3 +192,6 @@ binds {
 // Saved choices from the settings menu (Super+Shift+D). They come last so they override the values above.
 include optional=true "settings.kdl"
 include optional=true "display.kdl"
+include "settings/gaps.kdl"
+include "settings/corners.kdl"
+include "settings/theme.kdl"
