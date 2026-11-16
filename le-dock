@@ -378,7 +378,8 @@ def run_gui():
         def __init__(self):
             super().__init__(application_id="dev.le.dock")
             self.cells = {}
-            self.bounces = {}
+            self.bounces = {}      # key -> (start, duration); survives redraws
+            self.synced = False
 
         def do_activate(self):
             prov = Gtk.CssProvider()
@@ -405,6 +406,7 @@ def run_gui():
             self.win.present()
             GLib.idle_add(self.rebuild)
             threading.Thread(target=self.stream, daemon=True).start()
+            threading.Thread(target=self.poll, daemon=True).start()
             mon = Gio.File.new_for_path(PINS).monitor_file(Gio.FileMonitorFlags.NONE, None) \
                 if os.path.exists(PINS) else None
             if mon:
@@ -435,29 +437,54 @@ def run_gui():
             while True:
                 try:
                     p = subprocess.Popen(["niri", "msg", "--json", "event-stream"], stdout=subprocess.PIPE,
-                                         stderr=subprocess.DEVNULL, text=True)
+                                         stderr=subprocess.PIPE, text=True)
                     for line in p.stdout:
                         try:
                             ev = json.loads(line)
                         except ValueError:
                             continue
                         GLib.idle_add(self.on_event, ev)
-                except OSError:
-                    pass
+                    err = p.stderr.read().strip()
+                    print("le-dock: event-stream ended: %s" % (err or "no output"), file=sys.stderr, flush=True)
+                except OSError as e:
+                    print("le-dock: cannot run niri: %s" % e, file=sys.stderr, flush=True)
                 time.sleep(2)
 
+        def poll(self):
+            """safety net: re-read the window list every second"""
+            while True:
+                time.sleep(1.0)
+                try:
+                    r = subprocess.run(["niri", "msg", "--json", "windows"], capture_output=True,
+                                       text=True, timeout=5)
+                    wins = json.loads(r.stdout)
+                    if isinstance(wins, list):
+                        GLib.idle_add(self.on_event, {"WindowsChanged": {"windows": wins}})
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    pass
+
         def on_event(self, ev):
-            before = {i.key: (i.running, i.urgent) for i in model.items()}
-            model.apply(ev)
-            after = model.items()
-            for it in after:
-                was = before.get(it.key)
-                if it.running and (was is None or not was[0]):
-                    self.bounce(it.key, 3)           # new app appeared
-                    self.launching_done(it.key)
-                if it.urgent and not (was and was[1]):
-                    self.bounce(it.key, 6)
-            self.rebuild()
+            try:
+                before = {i.key: (i.running, i.urgent, i.focused, len(i.windows)) for i in model.items()}
+                model.apply(ev)
+                items = model.items()
+                if not self.synced and "WindowsChanged" in ev:
+                    self.synced = True              # first list: do not bounce everything
+                else:
+                    for it in items:
+                        was = before.get(it.key)
+                        if it.running and (was is None or not was[0]):
+                            self.bounce(it.key, 3)       # a new app appeared
+                        if it.urgent and not (was and was[1]):
+                            self.bounce(it.key, 6)       # needs attention
+                state = [(i.key, i.running, i.urgent, i.focused, len(i.windows)) for i in items]
+                if state != getattr(self, "_state", None):
+                    self._state = state
+                    self.rebuild()
+            except Exception:  # noqa: BLE001
+                import traceback
+                traceback.print_exc()
+                sys.stderr.flush()
             return False
 
         # ---- drawing ------------------------------------------------------
@@ -522,35 +549,42 @@ def run_gui():
             right.connect("released", lambda g, n, x, y, i=it, c=cell: self.menu(i, c))
             cell.add_controller(right)
             self.cells[it.key] = (cell, icon)
+            if it.key in self.bounces:
+                GLib.idle_add(lambda k=it.key: (self.start_bounce(k), False)[1])
             return cell
 
         # ---- bounce -------------------------------------------------------
         def bounce(self, key, times):
-            if key not in self.cells:
+            self.bounces[key] = (time.monotonic(), 0.45 * times)
+            self.start_bounce(key)
+
+        def start_bounce(self, key):
+            """animate the icon that is on screen now (a redraw restarts it from the registry)"""
+            if key not in self.cells or key not in self.bounces:
                 return
-            start = time.monotonic()
-            dur = 0.45 * times
-            self.bounces[key] = start
-            prov = Gtk.CssProvider()
+            start, dur = self.bounces[key]
             cell, icon = self.cells[key]
+            prov = Gtk.CssProvider()
             icon.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
 
-            def tick(widget, clock):
-                t = time.monotonic() - start
-                if t >= dur or self.bounces.get(key) != start:
-                    css_ = "* { transform: none; }"
-                    done = True
+            def load(text):
+                if hasattr(prov, "load_from_string"):
+                    prov.load_from_string(text)
                 else:
-                    ph = (t % 0.45) / 0.45
-                    h = abs(math.sin(ph * math.pi)) * HEAD * 0.9
-                    css_ = "* { transform: translateY(-%dpx); }" % h
-                    done = False
-                try:
-                    prov.load_from_string(css_) if hasattr(prov, "load_from_string") else prov.load_from_data(css_.encode())
-                except Exception:
+                    prov.load_from_data(text.encode())
+
+            def tick():
+                if icon.get_parent() is None or self.bounces.get(key, (None,))[0] != start:
+                    return False                      # redrawn or restarted: another timer owns it
+                t = time.monotonic() - start
+                if t >= dur:
+                    load("* { transform: none; }")
+                    self.bounces.pop(key, None)
                     return False
-                return not done
-            icon.add_tick_callback(tick)
+                ph = (t % 0.45) / 0.45
+                load("* { transform: translateY(-%dpx); }" % int(abs(math.sin(ph * math.pi)) * HEAD * 0.9))
+                return True
+            GLib.timeout_add(16, tick)
 
         def launching_done(self, key):
             pass
