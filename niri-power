@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# niri-power - power menu: lock, suspend, log out, reboot, shut down.
+# Bound to the power button (XF86PowerOff) and found in the settings menu.
+set -u
+export PATH="$HOME/.local/bin:$PATH"
+
+ask() {   # ask <question>  -> 0 when confirmed
+	local a
+	a=$(printf '%s\n' "No"$'\tgo-previous' "Yes"$'\tdialog-ok' | niri-menu -p "$1" --lines 2) || return 1
+	[[ $a == Yes ]]
+}
+
+choice=$(printf '%s\n' \
+	"Lock"$'\tsystem-lock-screen' \
+	"Suspend"$'\tsystem-suspend' \
+	"Log out"$'\tsystem-log-out' \
+	"Reboot"$'\tsystem-reboot' \
+	"Shut down"$'\tsystem-shutdown' | niri-menu -p "Power" --lines 5 --width 30) || exit 0
+
+case $choice in
+	Lock)
+		if command -v swaylock >/dev/null 2>&1; then swaylock -f
+		else loginctl lock-session; fi ;;
+	Suspend) systemctl suspend ;;
+	"Log out") ask "Log out?" && niri msg action quit --skip-confirmation ;;
+	Reboot) ask "Reboot?" && systemctl reboot ;;
+	"Shut down") ask "Shut down?" && systemctl poweroff ;;
+esac

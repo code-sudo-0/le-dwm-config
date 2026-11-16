@@ -348,6 +348,7 @@ install_niri_scripts() {
 	install -m755 "$REPO_DIR/niri-display"  "$BIN/niri-display"
 	install -m755 "$REPO_DIR/niri-settings" "$BIN/niri-settings"
 	install -m755 "$REPO_DIR/niri-menu"     "$BIN/niri-menu"
+	install -m755 "$REPO_DIR/niri-power"    "$BIN/niri-power"
 	install -m755 "$REPO_DIR/niri-thumbs"   "$BIN/niri-thumbs"
 	install -m755 "$REPO_DIR/le-dock"       "$BIN/le-dock"
 	# builds a theme from the wallpaper (auto theme); shared with dwm

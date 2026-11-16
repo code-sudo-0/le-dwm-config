@@ -245,6 +245,7 @@ main() {
 			"Window gaps           $(get GAPS $DEFAULT_GAPS)"$'\t'preferences-system-windows \
 			"Rounded corners       $(get RADIUS $DEFAULT_RADIUS)"$'\t'window-new \
 			"Terminal opacity      $(kitty_opacity)"$'\t'utilities-terminal \
+			"Power menu"$'\t'system-shutdown \
 			"Restart dock"$'\t'view-refresh \
 			"Restart bars          top bar and dock"$'\t'view-refresh \
 			"Key list"$'\t'input-keyboard \
@@ -258,6 +259,7 @@ main() {
 			"Window gaps"*) number_menu "Window gaps" GAPS $DEFAULT_GAPS 0 6 10 14 18 24 ;;
 			"Rounded corners"*) number_menu "Corner radius" RADIUS $DEFAULT_RADIUS 0 6 10 14 18 24 ;;
 			"Terminal opacity"*) opacity_menu ;;
+			"Power menu"*) niri-power ;;
 			"Restart dock"*) niri-dock stop 2>/dev/null; sleep 0.3; niri-dock start 2>/dev/null ;;
 			"Restart bars"*) niri-bars restart 2>/dev/null ;;
 			"Key list"*) niri-keys ;;

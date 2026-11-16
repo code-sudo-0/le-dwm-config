@@ -14,6 +14,10 @@ include optional=true "colors.kdl"
 prefer-no-csd
 
 input {
+    // the power button opens niri-power instead of suspending (a logind lock below keeps
+    // logind from powering off while niri does not handle the key)
+    disable-power-key-handling
+
     keyboard {
         xkb {
             layout "us"
@@ -72,6 +76,7 @@ layout {
 spawn-at-startup "sh" "-c" "PATH=$HOME/.local/bin:$PATH niri-wall restore"
 spawn-at-startup "sh" "-c" "PATH=$HOME/.local/bin:$PATH niri-bars start"
 spawn-at-startup "mako"
+spawn-at-startup "sh" "-c" "systemd-inhibit --what=handle-power-key --who=le-dwm --why='power button opens the power menu' --mode=block sleep infinity"
 
 hotkey-overlay {
     skip-at-startup
@@ -183,6 +188,8 @@ binds {
     Mod+Shift+Q { quit; }
     Print { screenshot-screen; }
 
+    XF86PowerOff hotkey-overlay-title="Power menu" { spawn "sh" "-c" "PATH=$HOME/.local/bin:$PATH niri-power"; }
+    Mod+Shift+Escape hotkey-overlay-title="Power menu" { spawn "sh" "-c" "PATH=$HOME/.local/bin:$PATH niri-power"; }
     XF86AudioRaiseVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ -l 1.0"; }
     XF86AudioLowerVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"; }
     XF86AudioMute allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"; }
