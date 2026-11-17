@@ -35,7 +35,7 @@ let
 
   common = [
     pkgs.git
-    (pkgs.python3.withPackages (ps: [ ps.pillow ]))
+    (pkgs.python3.withPackages (ps: [ ps.pillow ps.pygobject3 ps.pycairo ]))
     pkgs.kitty
     pkgs.firefox
     (pick [ "thunar" "xfce.thunar" ])
@@ -87,7 +87,6 @@ let
     pkgs.gtk4
     pkgs.gtk4-layer-shell
     pkgs.gobject-introspection
-    (pkgs.python3.withPackages (ps: [ ps.pygobject3 ps.pycairo ps.pillow ]))
     pkgs.papirus-icon-theme
   ];
 
@@ -148,6 +147,10 @@ in
     (lib.mkIf cfg.niri.enable {
       programs.niri.enable = true;
       environment.systemPackages = wayland;
+      # le-dock (GTK4 + layer-shell) finds its typelibs and libraries through these
+      environment.pathsToLink = [ "/lib/girepository-1.0" "/share/icons" ];
+      environment.sessionVariables.GI_TYPELIB_PATH = "/run/current-system/sw/lib/girepository-1.0";
+      environment.sessionVariables.LD_LIBRARY_PATH = [ "/run/current-system/sw/lib" ];
     })
   ]);
 }

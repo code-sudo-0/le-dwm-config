@@ -350,9 +350,30 @@ def selftest():
 # --------------------------------------------------------------------------
 # GUI
 # --------------------------------------------------------------------------
+def _search_dirs(sub):
+    dirs = [d for d in os.environ.get("LD_LIBRARY_PATH", "").split(":") if d]
+    for base in ("/run/current-system/sw", os.path.join(HOME, ".nix-profile"),
+                 "/etc/profiles/per-user/" + os.environ.get("USER", ""), "/usr", "/usr/local"):
+        dirs.append(os.path.join(base, sub))
+    return [d for d in dirs if os.path.isdir(d)]
+
+
 def load_gtk():
+    """import GTK4 + gtk4-layer-shell; also works on NixOS where nothing is in /usr/lib"""
     import ctypes
-    for name in ("libgtk4-layer-shell.so", "libgtk4-layer-shell.so.0"):
+    import glob
+    # typelibs (NixOS keeps them outside the default search path)
+    tl = [d for d in os.environ.get("GI_TYPELIB_PATH", "").split(":") if d]
+    for d in _search_dirs("lib/girepository-1.0") + _search_dirs("lib64/girepository-1.0"):
+        if d not in tl:
+            tl.append(d)
+    if tl:
+        os.environ["GI_TYPELIB_PATH"] = ":".join(tl)
+    # layer-shell must be loaded before libwayland
+    cands = ["libgtk4-layer-shell.so", "libgtk4-layer-shell.so.0"]
+    for d in _search_dirs("lib") + _search_dirs("lib64"):
+        cands += sorted(glob.glob(os.path.join(d, "libgtk4-layer-shell.so*")))
+    for name in cands:
         try:
             ctypes.CDLL(name)
             break
@@ -413,7 +434,7 @@ def run_gui():
             self.win = Gtk.Window(application=self)
             self.win.add_css_class("le-dock")
             LS.init_for_window(self.win)
-            LS.set_layer(self.win, LS.Layer.TOP)
+            LS.set_layer(self.win, LS.Layer.OVERLAY if behavior == "autohide" else LS.Layer.TOP)
             LS.set_anchor(self.win, LS.Edge.BOTTOM, True)
             LS.set_margin(self.win, LS.Edge.BOTTOM, 0)
             LS.set_namespace(self.win, "le-dock")
@@ -439,7 +460,7 @@ def run_gui():
                 def reserve():
                     h = self.pill.get_height()
                     if h > 0:
-                        LS.set_exclusive_zone(self.win, h + self.bottom_pad)
+                        LS.set_exclusive_zone(self.win, h + self.bottom_pad + int(16 * scale))   # + a gap so windows do not touch it
                     return h <= 0
                 GLib.timeout_add(250, reserve)
             elif behavior == "autohide":

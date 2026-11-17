@@ -353,6 +353,17 @@ install_niri_scripts() {
 	install -m755 "$REPO_DIR/le-dock"       "$BIN/le-dock"
 	# builds a theme from the wallpaper (auto theme); shared with dwm
 	install -m755 "$REPO_DIR/dwm-palette" "$BIN/dwm-palette"
+
+	# the macOS-style dock needs GTK4 + layer-shell; say clearly when this machine lacks them
+	if ! PATH="$BIN:$PATH" "$BIN/le-dock" --check >/dev/null 2>&1; then
+		warn "le-dock (macOS-style dock) cannot start here; the simple waybar dock is used instead."
+		if [[ $(distro 2>/dev/null) == nixos ]]; then
+			warn "  NixOS: enable programs.le-dwm.niri (it adds gtk4, gtk4-layer-shell, pygobject), rebuild, log out and in."
+		else
+			warn "  Arch: sudo pacman -S --needed gtk4 gtk4-layer-shell python-gobject python-cairo"
+		fi
+		warn "  details: $BIN/le-dock --check"
+	fi
 }
 
 # replace a managed file but keep one backup of the previous version
