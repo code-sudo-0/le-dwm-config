@@ -171,10 +171,14 @@ in
     (lib.mkIf cfg.niri.enable {
       programs.niri.enable = true;
       environment.systemPackages = wayland;
-      # le-dock (GTK4 + layer-shell) finds its typelibs and libraries through these
-      environment.pathsToLink = [ "/lib/girepository-1.0" "/share/icons" ];
-      environment.sessionVariables.GI_TYPELIB_PATH = "/run/current-system/sw/lib/girepository-1.0";
-      environment.sessionVariables.LD_LIBRARY_PATH = [ "/run/current-system/sw/lib" ];
+      # le-dock (GTK4 + layer-shell) finds its typelibs and libraries through these. The store
+      # paths are named explicitly (the "out" output): putting the packages in systemPackages
+      # alone can install only their "bin" output, which has no typelibs.
+      environment.sessionVariables.GI_TYPELIB_PATH = lib.makeSearchPathOutput "out" "lib/girepository-1.0" [
+        pkgs.gtk4 pkgs.gtk4-layer-shell pkgs.gobject-introspection pkgs.glib pkgs.graphene
+        pkgs.pango pkgs.gdk-pixbuf pkgs.harfbuzz pkgs.cairo pkgs.freetype
+      ];
+      environment.sessionVariables.LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.gtk4-layer-shell ];
     })
   ]);
 }
