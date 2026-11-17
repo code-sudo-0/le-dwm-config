@@ -87,6 +87,14 @@ let
     pkgs.gtk4
     pkgs.gtk4-layer-shell
     pkgs.gobject-introspection
+    # typelibs GTK4 itself loads (Graphene, Pango, GdkPixbuf, HarfBuzz, ...)
+    pkgs.glib
+    pkgs.graphene
+    pkgs.pango
+    pkgs.gdk-pixbuf
+    pkgs.harfbuzz
+    pkgs.cairo
+    pkgs.freetype
     pkgs.papirus-icon-theme
   ];
 
