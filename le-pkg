@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# le-pkg - one app list for every machine (extra-packages.list in the repo).
+#
+#   le-pkg add <name> [arch-package] [nix-attribute]   add an app (arch/nix names default to <name>)
+#   le-pkg remove <name>
+#   le-pkg list
+#   le-pkg sync        install the list on this machine (Arch: pacman; NixOS: tells you to rebuild)
+#
+# Arch installs right away. On NixOS the system is declarative, so adding an app means: add it here,
+# publish (./release.sh "..."), then update + rebuild (install.sh > Update, or nixos-rebuild switch).
+set -u
+
+find_list() {
+	local d
+	d=$PWD
+	while [[ $d != / ]]; do
+		[[ -f $d/extra-packages.list ]] && { echo "$d/extra-packages.list"; return 0; }
+		d=$(dirname "$d")
+	done
+	for d in "${LE_DWM_REPO:-}" "$HOME/le-dwm-config"; do
+		[[ -n $d && -f $d/extra-packages.list ]] && { echo "$d/extra-packages.list"; return 0; }
+	done
+	return 1
+}
+LIST=$(find_list) || { echo "le-pkg: cannot find extra-packages.list (cd into your le-dwm-config clone or set LE_DWM_REPO)" >&2; exit 1; }
+
+is_nixos() { [[ -e /etc/NIXOS ]] || grep -qs '^ID=nixos' /etc/os-release; }
+
+entries() { grep -vE '^[[:space:]]*(#|$)' "$LIST"; }
+
+sync_arch() {
+	local name arch nix rc=0
+	command -v pacman >/dev/null 2>&1 || { echo "le-pkg: pacman not found; nothing to install here"; return 0; }
+	while read -r name arch nix _; do
+		[[ -n ${arch:-} && $arch != - ]] || continue
+		sudo pacman -S --needed --noconfirm "$arch" || { echo "!! could not install $arch ($name)" >&2; rc=1; }
+	done < <(entries)
+	return $rc
+}
+
+cmd=${1:-list}
+case $cmd in
+	list)
+		printf '%-18s %-22s %s\n' NAME ARCH NIX
+		entries | while read -r n a x _; do printf '%-18s %-22s %s\n' "$n" "${a:--}" "${x:--}"; done
+		echo; echo "file: $LIST"
+		;;
+	add)
+		name=${2:-}; [[ -n $name ]] || { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+		arch=${3:-$name}; nix=${4:-$name}
+		if entries | awk -v n="$name" '$1 == n { f = 1 } END { exit !f }'; then
+			echo "$name is already in the list"
+		else
+			printf '%-12s %-13s %s\n' "$name" "$arch" "$nix" >> "$LIST"
+			echo "added $name to $LIST"
+		fi
+		if is_nixos; then
+			echo "NixOS: publish the repo (./release.sh \"add $name\"), then install.sh > Update, or:"
+			echo "  sudo nix flake update le-dwm-config && sudo nixos-rebuild switch --flake /etc/nixos#<host>"
+		else
+			sync_arch
+			echo "On NixOS machines: publish (./release.sh \"add $name\") and update/rebuild there."
+		fi
+		;;
+	remove)
+		name=${2:-}; [[ -n $name ]] || { echo "usage: le-pkg remove <name>"; exit 1; }
+		tmp=$(mktemp)
+		awk -v n="$name" '!( $1 == n && $0 !~ /^[[:space:]]*#/ )' "$LIST" > "$tmp" && cat "$tmp" > "$LIST"
+		rm -f "$tmp"
+		echo "removed $name from the list (installed packages are not uninstalled)"
+		;;
+	sync)
+		if is_nixos; then
+			echo "NixOS: the list is part of the system config; run install.sh > Update or nixos-rebuild switch."
+		else
+			sync_arch
+		fi
+		;;
+	*) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

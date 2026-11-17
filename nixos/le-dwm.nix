@@ -33,7 +33,23 @@ let
   # optional: skipped when this nixpkgs does not have it
   maybe = name: lib.optional (lib.hasAttr name pkgs) pkgs.${name};
 
-  common = [
+  # extra-packages.list in the repo: one app list for Arch (pacman) and NixOS (this column)
+  extraFile = ../extra-packages.list;
+  extraFields =
+    map (l: lib.filter (x: x != "") (lib.splitString " " (builtins.replaceStrings [ "\t" ] [ " " ] l)))
+      (lib.filter (l: l != "" && !(lib.hasPrefix "#" l))
+        (if builtins.pathExists extraFile then lib.splitString "\n" (builtins.readFile extraFile) else [ ]));
+  extraAttrs = lib.concatMap
+    (f: if builtins.length f >= 3 && builtins.elemAt f 2 != "-" then [ (builtins.elemAt f 2) ] else [ ])
+    extraFields;
+  extraApps = lib.concatMap
+    (a:
+      let path = lib.splitString "." a; in
+      if lib.hasAttrByPath path pkgs then [ (lib.getAttrFromPath path pkgs) ]
+      else builtins.trace "le-dwm: extra-packages.list: no nixpkgs attribute '${a}' (skipped)" [ ])
+    extraAttrs;
+
+  common = extraApps ++ [
     pkgs.git
     (pkgs.python3.withPackages (ps: [ ps.pillow ps.pygobject3 ps.pycairo ]))
     pkgs.kitty

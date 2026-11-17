@@ -88,6 +88,21 @@ sync_packages() {
 	fi
 }
 
+# apps from extra-packages.list (Arch: pacman; NixOS: part of the module, applied by nixos-rebuild)
+install_extra_packages() {
+	local list="$REPO_DIR/extra-packages.list" name arch nix
+	[[ -f $list ]] || return 0
+	(( NIXOS )) && return 0
+	[[ ${DWM_SKIP_PACKAGES:-0} == 1 ]] && return 0
+	command -v pacman >/dev/null 2>&1 || return 0
+	local any=0
+	while read -r name arch nix _; do
+		[[ -n ${name:-} && ${name:0:1} != "#" && -n ${arch:-} && $arch != - ]] || continue
+		(( any )) || { echo "==> Installing your extra apps (extra-packages.list)"; any=1; }
+		sudo pacman -S --needed --noconfirm "$arch" || warn "could not install $arch ($name)"
+	done < "$list"
+}
+
 install_packages() {
 	if (( NIXOS )); then nix_check dwm; return 0; fi
 	if [[ ${DWM_SKIP_PACKAGES:-0} == 1 ]]; then
@@ -111,6 +126,7 @@ install_packages() {
 		sudo pacman -S --needed --noconfirm "$pkg" || warn "could not install $pkg (skipping)"
 	done
 
+	install_extra_packages
 	if pacman -Qq dwm &>/dev/null; then
 		warn "The packaged 'dwm' is installed. Remove it with: sudo pacman -R dwm"
 	fi
@@ -143,6 +159,7 @@ install_dwm_scripts() {
 	echo "==> Installing scripts to $BIN"
 	mkdir -p "$BIN"
 	install -m755 "$REPO_DIR/le-devrun"    "$BIN/le-devrun"
+	install -m755 "$REPO_DIR/le-pkg"       "$BIN/le-pkg"
 	if (( NIXOS )); then   # build shell for dwm (C compiler + X11 headers), see le-devrun
 		mkdir -p "$CONF/nixenv"
 		cmp -s "$REPO_DIR/nix/devshell/flake.nix" "$CONF/nixenv/flake.nix" \
@@ -333,6 +350,7 @@ install_niri_packages() {
 	for pkg in swaylock swayidle xdg-desktop-portal-gnome qt5-wayland qt6-wayland; do
 		sudo pacman -S --needed --noconfirm "$pkg" || warn "could not install $pkg (skipping)"
 	done
+	install_extra_packages
 	return $failed
 }
 
@@ -349,6 +367,7 @@ install_niri_scripts() {
 	install -m755 "$REPO_DIR/niri-settings" "$BIN/niri-settings"
 	install -m755 "$REPO_DIR/niri-menu"     "$BIN/niri-menu"
 	install -m755 "$REPO_DIR/niri-power"    "$BIN/niri-power"
+	install -m755 "$REPO_DIR/le-pkg"        "$BIN/le-pkg"
 	install -m755 "$REPO_DIR/niri-thumbs"   "$BIN/niri-thumbs"
 	install -m755 "$REPO_DIR/le-dock"       "$BIN/le-dock"
 	# builds a theme from the wallpaper (auto theme); shared with dwm

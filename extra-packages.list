@@ -1,0 +1,11 @@
+# Apps you add on top of the dotfiles. ONE list, used by every machine:
+#   Arch / CachyOS : install.sh installs the "arch" column with pacman (install and every update)
+#   NixOS          : nixos/le-dwm.nix adds the "nix" column to the system (applied by nixos-rebuild)
+#
+# columns:  name   arch-package   nixpkgs-attribute        ("-" = not needed on that system)
+# add one with:   le-pkg add <name> [arch-package] [nix-attribute]
+#
+# name        arch          nix
+# vlc         vlc           vlc
+# obsidian    obsidian      obsidian
+# btop        btop          btop
